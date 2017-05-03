@@ -154,7 +154,7 @@ namespace Microsoft.Extensions.DependencyInjection
             // Support for activating ViewDataDictionary
             services.TryAddEnumerable(
                 ServiceDescriptor
-                    .Transient<IControllerPropertyActivator, ViewDataDictionaryControllerPropertyActivator>());
+                    .Transient<IControllerPropertyActivatorFactory, ViewDataDictionaryControllerPropertyActivator>());
 
             //
             // HTML Helper

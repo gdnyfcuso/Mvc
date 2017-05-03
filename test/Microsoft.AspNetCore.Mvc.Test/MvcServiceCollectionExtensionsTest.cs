@@ -402,7 +402,7 @@ namespace Microsoft.AspNetCore.Mvc
                         }
                     },
                     {
-                        typeof(IControllerPropertyActivator),
+                        typeof(IControllerPropertyActivatorFactory),
                         new Type[]
                         {
                             typeof(DefaultControllerPropertyActivator),

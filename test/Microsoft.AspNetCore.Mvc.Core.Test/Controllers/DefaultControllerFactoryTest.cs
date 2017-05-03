@@ -224,7 +224,7 @@ namespace Microsoft.AspNetCore.Mvc.Controllers
             var activatorMock = new Mock<IControllerActivator>();
 
             controllerActivator = controllerActivator ?? activatorMock.Object;
-            var propertyActivators = new IControllerPropertyActivator[]
+            var propertyActivators = new IControllerPropertyActivatorFactory[]
             {
                 new DefaultControllerPropertyActivator(),
             };

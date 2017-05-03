@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Abstractions;
-using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Core;
 using Microsoft.AspNetCore.Mvc.Core.Internal;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -20,12 +19,9 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 {
     public class ControllerActionInvoker : ResourceInvoker, IActionInvoker
     {
-        private readonly IControllerFactory _controllerFactory;
+        private readonly ControllerActionInvokerState _cacheState;
         private readonly ParameterBinder _parameterBinder;
-        private readonly IModelMetadataProvider _modelMetadataProvider;
-
         private readonly ControllerContext _controllerContext;
-        private readonly ObjectMethodExecutor _executor;
 
         private object _controller;
         private Dictionary<string, object> _arguments;
@@ -39,20 +35,18 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         private ResultExecutedContext _resultExecutedContext;
 
         public ControllerActionInvoker(
-            IControllerFactory controllerFactory,
             ParameterBinder parameterBinder,
-            IModelMetadataProvider modelMetadataProvider,
             ILogger logger,
             DiagnosticSource diagnosticSource,
             ControllerContext controllerContext,
-            IFilterMetadata[] filters,
-            ObjectMethodExecutor objectMethodExecutor)
+            ControllerActionInvokerState cacheState,
+            IFilterMetadata[] filters)
             : base(diagnosticSource, logger, controllerContext, filters, controllerContext.ValueProviderFactories)
         {
 
-            if (controllerFactory == null)
+            if (cacheState == null)
             {
-                throw new ArgumentNullException(nameof(controllerFactory));
+                throw new ArgumentNullException(nameof(cacheState));
             }
 
             if (parameterBinder == null)
@@ -60,23 +54,16 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 throw new ArgumentNullException(nameof(parameterBinder));
             }
 
-            if (objectMethodExecutor == null)
-            {
-                throw new ArgumentNullException(nameof(objectMethodExecutor));
-            }
-
-            _controllerFactory = controllerFactory;
+            _cacheState = cacheState;
             _parameterBinder = parameterBinder;
-            _modelMetadataProvider = modelMetadataProvider;
             _controllerContext = controllerContext;
-            _executor = objectMethodExecutor;
         }
 
         protected override void ReleaseResources()
         {
-            if (_controller != null)
+            if (_controller != null && _cacheState.ControllerReleaser != null)
             {
-                _controllerFactory.ReleaseController(_controllerContext, _controller);
+                _cacheState.ControllerReleaser(_controllerContext, _controller);
             }
         }
 
@@ -294,7 +281,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
                         _cursor.Reset();
 
-                        _controller = _controllerFactory.CreateController(controllerContext);
+                        _controller = _cacheState.ControllerFactory(controllerContext);
 
                         _arguments = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
@@ -758,7 +745,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         private async Task InvokeActionMethodAsync()
         {
             var controllerContext = _controllerContext;
-            var executor = _executor;
+            var executor = _cacheState.ActionMethodExecutor;
             var controller = _controller;
             var arguments = _arguments;
             var orderedArguments = ControllerActionExecutor.PrepareArguments(arguments, executor);
@@ -800,24 +787,24 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                             Resources.FormatActionResult_ActionReturnValueCannotBeNull(typeof(IActionResult)));
                     }
                 }
-                else if (IsResultIActionResult(_executor))
+                else if (IsResultIActionResult(executor))
                 {
-                    if (_executor.IsMethodAsync)
+                    if (executor.IsMethodAsync)
                     {
                         // Async method returning awaitable-of-IActionResult (e.g., Task<ViewResult>)
                         // We have to use ExecuteAsync because we don't know the awaitable's type at compile time.
-                        result = (IActionResult)await _executor.ExecuteAsync(controller, orderedArguments);
+                        result = (IActionResult)await executor.ExecuteAsync(controller, orderedArguments);
                     }
                     else
                     {
                         // Sync method returning IActionResult (e.g., ViewResult)
-                        result = (IActionResult)_executor.Execute(controller, orderedArguments);
+                        result = (IActionResult)executor.Execute(controller, orderedArguments);
                     }
 
                     if (result == null)
                     {
                         throw new InvalidOperationException(
-                            Resources.FormatActionResult_ActionReturnValueCannotBeNull(_executor.AsyncResultType ?? returnType));
+                            Resources.FormatActionResult_ActionReturnValueCannotBeNull(executor.AsyncResultType ?? returnType));
                     }
                 }
                 else if (!executor.IsMethodAsync)
@@ -1005,13 +992,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 return TaskCache.CompletedTask;
             }
 
-            return BindArgumentsCoreAsync(_parameterBinder, _modelMetadataProvider, _controllerContext, _controller, _arguments);
+            return BindArgumentsCoreAsync(_parameterBinder, _cacheState, _controllerContext, _controller, _arguments);
         }
 
         // Intentionally static internal for unit testing
         internal static async Task BindArgumentsCoreAsync(
             ParameterBinder parameterBinder,
-            IModelMetadataProvider modelMetadataProvider,
+            ControllerActionInvokerState actionInvokerState,
             ControllerContext controllerContext, 
             object controller, 
             Dictionary<string, object> arguments)
@@ -1038,30 +1025,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 return;
             }
 
-            var controllerType = controller.GetType();
-            ModelMetadata controllerMetadata = null;
-            for (var i = 0; i < propertyDescriptors.Count; i++)
-            {
-                var property = propertyDescriptors[i];
-
-                var result = await parameterBinder.BindModelAsync(controllerContext, valueProvider, property);
-                if (result.IsModelSet)
-                {
-                    if (controllerMetadata == null)
-                    {
-                        controllerMetadata = modelMetadataProvider.GetMetadataForType(controllerType);
-                    }
-                    var propertyMetadata = controllerMetadata.Properties[property.Name] ??
-                        modelMetadataProvider.GetMetadataForProperty(controllerType, property.Name);
-                    if (propertyMetadata != null)
-                    {
-                        PropertyValueSetter.SetValue(
-                            propertyMetadata,
-                            controller,
-                            result.Model);
-                    }
-                }
-            }
+            await actionInvokerState.PropertyBinderFactory(controllerContext, controller);
         }
 
         private enum Scope

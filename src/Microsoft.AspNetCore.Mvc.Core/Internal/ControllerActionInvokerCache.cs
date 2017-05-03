@@ -5,25 +5,36 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.Internal;
 
 namespace Microsoft.AspNetCore.Mvc.Internal
 {
-    public class ControllerActionInvokerCache
+    public partial class ControllerActionInvokerCache
     {
         private readonly IActionDescriptorCollectionProvider _collectionProvider;
+        private readonly ParameterBinder _parameterBinder;
+        private readonly IModelMetadataProvider _modelMetadataProvider;
         private readonly IFilterProvider[] _filterProviders;
+        private readonly IControllerFactoryProvider _controllerFactoryProvider;
 
         private volatile InnerCache _currentCache;
 
         public ControllerActionInvokerCache(
             IActionDescriptorCollectionProvider collectionProvider,
-            IEnumerable<IFilterProvider> filterProviders)
+            ParameterBinder parameterBinder,
+            IModelMetadataProvider modelMetadataProvider,
+            IEnumerable<IFilterProvider> filterProviders,
+            IControllerFactoryProvider factoryProvider)
         {
             _collectionProvider = collectionProvider;
+            _parameterBinder = parameterBinder;
+            _modelMetadataProvider = modelMetadataProvider;
             _filterProviders = filterProviders.OrderBy(item => item.Order).ToArray();
+            _controllerFactoryProvider = factoryProvider;
         }
 
         private InnerCache CurrentCache
@@ -43,14 +54,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             }
         }
 
-        public ControllerActionInvokerState GetState(ControllerContext controllerContext)
+        public (ControllerActionInvokerState State, IFilterMetadata[] Filters) GetState(ControllerContext controllerContext)
         {
             var cache = CurrentCache;
             var actionDescriptor = controllerContext.ActionDescriptor;
 
             IFilterMetadata[] filters;
-            Entry cacheEntry;
-            if (!cache.Entries.TryGetValue(actionDescriptor, out cacheEntry))
+            if (!cache.Entries.TryGetValue(actionDescriptor, out var actionInvokerState))
             {
                 var filterFactoryResult = FilterFactory.GetAllFilters(_filterProviders, controllerContext);
                 filters = filterFactoryResult.Filters;
@@ -63,16 +73,28 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                     actionDescriptor.ControllerTypeInfo,
                     parameterDefaultValues);
 
-                cacheEntry = new Entry(filterFactoryResult.CacheableFilters, executor);
-                cacheEntry = cache.Entries.GetOrAdd(actionDescriptor, cacheEntry);
+                var controllerFactory = _controllerFactoryProvider.CreateControllerFactory(actionDescriptor);
+                var controllerReleaser = _controllerFactoryProvider.CreateControllerReleaser(actionDescriptor);
+                var propertyBinderFactory = ControllerPropertyBinderFactory.CreateBinder(
+                    _parameterBinder,
+                    _modelMetadataProvider,
+                    actionDescriptor);
+
+                actionInvokerState = new ControllerActionInvokerState(
+                    filterFactoryResult.CacheableFilters, 
+                    controllerFactory, 
+                    controllerReleaser,
+                    propertyBinderFactory,
+                    executor);
+                actionInvokerState = cache.Entries.GetOrAdd(actionDescriptor, actionInvokerState);
             }
             else
             {
                 // Filter instances from statically defined filter descriptors + from filter providers
-                filters = FilterFactory.CreateUncachedFilters(_filterProviders, controllerContext, cacheEntry.FilterItems);
+                filters = FilterFactory.CreateUncachedFilters(_filterProviders, controllerContext, actionInvokerState.Filters);
             }
 
-            return new ControllerActionInvokerState(filters, cacheEntry.ActionMethodExecutor);
+            return (actionInvokerState, filters);
         }
 
         private class InnerCache
@@ -82,38 +104,10 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 Version = version;
             }
 
-            public ConcurrentDictionary<ActionDescriptor, Entry> Entries { get; } =
-                new ConcurrentDictionary<ActionDescriptor, Entry>();
+            public ConcurrentDictionary<ActionDescriptor, ControllerActionInvokerState> Entries { get; } =
+                new ConcurrentDictionary<ActionDescriptor, ControllerActionInvokerState>();
 
             public int Version { get; }
-        }
-
-        private struct Entry
-        {
-            public Entry(FilterItem[] items, ObjectMethodExecutor executor)
-            {
-                FilterItems = items;
-                ActionMethodExecutor = executor;
-            }
-
-            public FilterItem[] FilterItems { get; }
-
-            public ObjectMethodExecutor ActionMethodExecutor { get; }
-        }
-
-        public struct ControllerActionInvokerState
-        {
-            public ControllerActionInvokerState(
-                IFilterMetadata[] filters,
-                ObjectMethodExecutor actionMethodExecutor)
-            {
-                Filters = filters;
-                ActionMethodExecutor = actionMethodExecutor;
-            }
-
-            public IFilterMetadata[] Filters { get; }
-
-            public ObjectMethodExecutor ActionMethodExecutor { get; set; }
         }
     }
 }
