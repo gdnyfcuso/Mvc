@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Core;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.Extensions.Logging;
 
@@ -99,6 +100,8 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 throw new ArgumentNullException(nameof(bindingContext));
             }
 
+            _logger?.AttemptingToBindModel(bindingContext);
+
             // Special logic for body, treat the model name as string.Empty for the top level
             // object, but allow an override via BinderModelName. The purpose of this is to try
             // and be similar to the behavior for POCOs bound via traditional model binding.
@@ -142,26 +145,28 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             if (formatter == null)
             {
                 _logger?.NoInputFormatterSelected(formatterContext);
+
                 var message = Resources.FormatUnsupportedContentType(httpContext.Request.ContentType);
                 var exception = new UnsupportedContentTypeException(message);
                 bindingContext.ModelState.AddModelError(modelBindingKey, exception, bindingContext.ModelMetadata);
+                _logger?.DoneAttemptingToBindModel(bindingContext);
                 return;
             }
 
             try
             {
-                var previousCount = bindingContext.ModelState.ErrorCount;
                 var result = await formatter.ReadAsync(formatterContext);
-                var model = result.Model;
 
                 if (result.HasError)
                 {
                     // Formatter encountered an error. Do not use the model it returned.
+                    _logger?.DoneAttemptingToBindModel(bindingContext);
                     return;
                 }
 
                 if (result.IsModelSet)
                 {
+                    var model = result.Model;
                     bindingContext.Result = ModelBindingResult.Success(model);
                 }
                 else
@@ -177,14 +182,26 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                         .MissingRequestBodyRequiredValueAccessor();
                     bindingContext.ModelState.AddModelError(modelBindingKey, message);
                 }
-
-                return;
             }
-            catch (Exception ex)
+            catch (Exception exception) when (exception is InputFormatterException || ShouldHandleException(formatter))
             {
-                bindingContext.ModelState.AddModelError(modelBindingKey, ex, bindingContext.ModelMetadata);
-                return;
+                bindingContext.ModelState.AddModelError(modelBindingKey, exception, bindingContext.ModelMetadata);
             }
+
+            _logger?.DoneAttemptingToBindModel(bindingContext);
+        }
+
+        private bool ShouldHandleException(IInputFormatter formatter)
+        {
+            var policy = _options.InputFormatterExceptionPolicy;
+
+            // Any explicit policy on the formatters takes precedence over the global policy on MvcOptions
+            if (formatter is IInputFormatterExceptionPolicy exceptionPolicy)
+            {
+                policy = exceptionPolicy.ExceptionPolicy;
+            }
+
+            return policy == InputFormatterExceptionPolicy.AllExceptions;
         }
     }
 }

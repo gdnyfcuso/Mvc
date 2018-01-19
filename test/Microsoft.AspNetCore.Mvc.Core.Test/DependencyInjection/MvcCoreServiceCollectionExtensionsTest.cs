@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -242,10 +243,24 @@ namespace Microsoft.AspNetCore.Mvc
                         }
                     },
                     {
+                        typeof(IPostConfigureOptions<MvcOptions>),
+                        new Type[]
+                        {
+                            typeof(MvcOptionsConfigureCompatibilityOptions),
+                        }
+                    },
+                    {
                         typeof(IConfigureOptions<RouteOptions>),
                         new Type[]
                         {
                             typeof(MvcCoreRouteOptionsSetup),
+                        }
+                    },
+                    {
+                        typeof(IConfigureOptions<ApiBehaviorOptions>),
+                        new Type[]
+                        {
+                            typeof(ApiBehaviorOptionsSetup),
                         }
                     },
                     {
@@ -288,6 +303,7 @@ namespace Microsoft.AspNetCore.Mvc
                         new Type[]
                         {
                             typeof(DefaultApplicationModelProvider),
+                            typeof(ApiBehaviorApplicationModelProvider),
                         }
                     },
                 };

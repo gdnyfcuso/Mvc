@@ -12,8 +12,6 @@ namespace Microsoft.AspNetCore.Mvc
     /// </summary>
     public class AcceptedResult : ObjectResult
     {
-        private string _location;
-
         /// <summary>
         /// Initializes a new instance of the <see cref="AcceptedResult"/> class with the values
         /// provided.
@@ -42,7 +40,7 @@ namespace Microsoft.AspNetCore.Mvc
         /// provided.
         /// </summary>
         /// <param name="locationUri">The location at which the status of requested content can be monitored
-        /// It is an optional paramater and may be null</param>
+        /// It is an optional parameter and may be null</param>
         /// <param name="value">The value to format in the entity body.</param>
         public AcceptedResult(Uri locationUri, object value)
             : base(value)
@@ -67,17 +65,7 @@ namespace Microsoft.AspNetCore.Mvc
         /// <summary>
         /// Gets or sets the location at which the status of the requested content can be monitored.
         /// </summary>
-        public string Location
-        {
-            get
-            {
-                return _location;
-            }
-            set
-            {
-                _location = value;
-            }
-        }
+        public string Location { get; set; }
 
         /// <inheritdoc />
         public override void OnFormatting(ActionContext context)

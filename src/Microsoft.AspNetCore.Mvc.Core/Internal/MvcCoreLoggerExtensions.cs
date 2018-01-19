@@ -6,19 +6,27 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ActionConstraints;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.AspNetCore.Mvc.Formatters.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging;
+using Microsoft.Net.Http.Headers;
 
 namespace Microsoft.AspNetCore.Mvc.Internal
 {
     internal static class MvcCoreLoggerExtensions
     {
+        public const string ActionFilter = "Action Filter";
+        private static readonly string[] _noFilters = new[] { "None" };
+
         private static readonly double TimestampToTicks = TimeSpan.TicksPerSecond / (double)Stopwatch.Frequency;
 
         private static readonly Action<ILogger, string, Exception> _actionExecuting;
@@ -31,13 +39,22 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         private static readonly Action<ILogger, string, string[], ModelValidationState, Exception> _actionMethodExecuting;
         private static readonly Action<ILogger, string, string, Exception> _actionMethodExecuted;
 
+        private static readonly Action<ILogger, string, string[], Exception> _logFilterExecutionPlan;
+        private static readonly Action<ILogger, string, string, Type, Exception> _beforeExecutingMethodOnFilter;
+        private static readonly Action<ILogger, string, string, Type, Exception> _afterExecutingMethodOnFilter;
+        private static readonly Action<ILogger, Type, Exception> _beforeExecutingActionResult;
+        private static readonly Action<ILogger, Type, Exception> _afterExecutingActionResult;
+
         private static readonly Action<ILogger, string, Exception> _ambiguousActions;
         private static readonly Action<ILogger, string, string, IActionConstraint, Exception> _constraintMismatch;
 
-        private static readonly Action<ILogger, string, Exception> _fileResultExecuting;
-
+        private static readonly Action<ILogger, FileResult, string, string, Exception> _executingFileResult;
+        private static readonly Action<ILogger, FileResult, string, Exception> _executingFileResultWithNoFileName;
+        private static readonly Action<ILogger, Exception> _notEnabledForRangeProcessing;
+        private static readonly Action<ILogger, Exception> _writingRangeToBody;
         private static readonly Action<ILogger, object, Exception> _authorizationFailure;
         private static readonly Action<ILogger, object, Exception> _resourceFilterShortCircuit;
+        private static readonly Action<ILogger, object, Exception> _resultFilterShortCircuit;
         private static readonly Action<ILogger, object, Exception> _actionFilterShortCircuit;
         private static readonly Action<ILogger, object, Exception> _exceptionFilterShortCircuit;
 
@@ -71,6 +88,58 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
         private static readonly Action<ILogger, string, Exception> _redirectToPageResultExecuting;
 
+        private static readonly Action<ILogger, Exception> _featureNotFound;
+        private static readonly Action<ILogger, Exception> _featureIsReadOnly;
+        private static readonly Action<ILogger, string, Exception> _maxRequestBodySizeSet;
+        private static readonly Action<ILogger, Exception> _requestBodySizeLimitDisabled;
+
+        private static readonly Action<ILogger, Exception> _cannotApplyRequestFormLimits;
+        private static readonly Action<ILogger, Exception> _appliedRequestFormLimits;
+
+        private static readonly Action<ILogger, Exception> _modelStateInvalidFilterExecuting;
+
+        private static readonly Action<ILogger, MethodInfo, string, string, Exception> _inferredParameterSource;
+        private static readonly Action<ILogger, MethodInfo, Exception> _unableToInferParameterSources;
+        private static readonly Action<ILogger, IModelBinderProvider[], Exception> _registeredModelBinderProviders;
+        private static readonly Action<ILogger, string, Type, string, Type, Exception> _foundNoValueForPropertyInRequest;
+        private static readonly Action<ILogger, string, string, Type, Exception> _foundNoValueInRequest;
+        private static readonly Action<ILogger, string, Type, Exception> _noPublicSettableProperties;
+        private static readonly Action<ILogger, Type, Exception> _cannotBindToComplexType;
+        private static readonly Action<ILogger, string, Type, Exception> _cannotBindToFilesCollectionDueToUnsupportedContentType;
+        private static readonly Action<ILogger, Type, Exception> _cannotCreateHeaderModelBinder;
+        private static readonly Action<ILogger, Exception> _noFilesFoundInRequest;
+        private static readonly Action<ILogger, string, string, Exception> _noNonIndexBasedFormatFoundForCollection;
+        private static readonly Action<ILogger, string, string, string, string, string, string, Exception> _attemptingToBindCollectionUsingIndices;
+        private static readonly Action<ILogger, string, string, string, string, string, string, Exception> _attemptingToBindCollectionOfKeyValuePair;
+        private static readonly Action<ILogger, string, string, string, Exception> _noKeyValueFormatForDictionaryModelBinder;
+        private static readonly Action<ILogger, Type, string, Type, string, Exception> _attemptingToBindPropertyModel;
+        private static readonly Action<ILogger, Type, string, Type, Exception> _doneAttemptingToBindPropertyModel;
+        private static readonly Action<ILogger, Type, string, Exception> _attemptingToBindModel;
+        private static readonly Action<ILogger, Type, string, Exception> _doneAttemptingToBindModel;
+        private static readonly Action<ILogger, string, Type, Exception> _attemptingToBindParameter;
+        private static readonly Action<ILogger, string, Type, Exception> _doneAttemptingToBindParameter;
+        private static readonly Action<ILogger, Type, string, Type, Exception> _attemptingToBindProperty;
+        private static readonly Action<ILogger, Type, string, Type, Exception> _doneAttemptingToBindProperty;
+        private static readonly Action<ILogger, Type, string, Type, Exception> _attemptingToValidateProperty;
+        private static readonly Action<ILogger, Type, string, Type, Exception> _doneAttemptingToValidateProperty;
+        private static readonly Action<ILogger, string, Type, Exception> _attemptingToValidateParameter;
+        private static readonly Action<ILogger, string, Type, Exception> _doneAttemptingToValidateParameter;
+        private static readonly Action<ILogger, string, Exception> _unsupportedFormatFilterContentType;
+        private static readonly Action<ILogger, string, MediaTypeCollection, Exception> _actionDoesNotSupportFormatFilterContentType;
+        private static readonly Action<ILogger, string, Exception> _cannotApplyFormatFilterContentType;
+        private static readonly Action<ILogger, Exception> _actionDoesNotExplicitlySpecifyContentTypes;
+        private static readonly Action<ILogger, IEnumerable<MediaTypeSegmentWithQuality>, Exception> _selectingOutputFormatterUsingAcceptHeader;
+        private static readonly Action<ILogger, EntityTagHeaderValue, Exception> _ifMatchPreconditionFailed;
+        private static readonly Action<ILogger, DateTimeOffset?, DateTimeOffset?, Exception> _ifUnmodifiedSincePreconditionFailed;
+        private static readonly Action<ILogger, DateTimeOffset?, DateTimeOffset?, Exception> _ifRangeLastModifiedPreconditionFailed;
+        private static readonly Action<ILogger, EntityTagHeaderValue, EntityTagHeaderValue, Exception> _ifRangeETagPreconditionFailed;
+        private static readonly Action<ILogger, IEnumerable<MediaTypeSegmentWithQuality>, MediaTypeCollection, Exception> _selectingOutputFormatterUsingAcceptHeaderAndExplicitContentTypes;
+        private static readonly Action<ILogger, Exception> _selectingOutputFormatterWithoutUsingContentTypes;
+        private static readonly Action<ILogger, MediaTypeCollection, Exception> _selectingOutputFormatterUsingContentTypes;
+        private static readonly Action<ILogger, Exception> _selectingFirstCanWriteFormatter;
+        private static readonly Action<ILogger, Type, Type, Type, Exception> _notMostEffectiveFilter;
+        private static readonly Action<ILogger, IEnumerable<IOutputFormatter>, Exception> _registeredOutputFormatters;
+
         static MvcCoreLoggerExtensions()
         {
             _actionExecuting = LoggerMessage.Define<string>(
@@ -103,6 +172,31 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 2,
                 "Executed action method {ActionName}, returned result {ActionResult}.");
 
+            _logFilterExecutionPlan = LoggerMessage.Define<string, string[]>(
+                LogLevel.Debug,
+                1,
+                "Execution plan of {FilterType} filters (in the following order): {Filters}");
+
+            _beforeExecutingMethodOnFilter = LoggerMessage.Define<string, string, Type>(
+                LogLevel.Trace,
+                2,
+                "{FilterType}: Before executing {Method} on filter {Filter}.");
+
+            _afterExecutingMethodOnFilter = LoggerMessage.Define<string, string, Type>(
+                LogLevel.Trace,
+                3,
+                "{FilterType}: After executing {Method} on filter {Filter}.");
+
+            _beforeExecutingActionResult = LoggerMessage.Define<Type>(
+                LogLevel.Trace,
+                4,
+                "Before executing action result {ActionResult}.");
+
+            _afterExecutingActionResult = LoggerMessage.Define<Type>(
+                LogLevel.Trace,
+                5,
+                "After executing action result {ActionResult}.");
+
             _ambiguousActions = LoggerMessage.Define<string>(
                 LogLevel.Error,
                 1,
@@ -113,20 +207,30 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 2,
                 "Action '{ActionName}' with id '{ActionId}' did not match the constraint '{ActionConstraint}'");
 
-            _fileResultExecuting = LoggerMessage.Define<string>(
+            _executingFileResult = LoggerMessage.Define<FileResult, string, string>(
                 LogLevel.Information,
                 1,
-                "Executing FileResult, sending file as {FileDownloadName}");
+                "Executing {FileResultType}, sending file '{FileDownloadPath}' with download name '{FileDownloadName}' ...");
+
+            _executingFileResultWithNoFileName = LoggerMessage.Define<FileResult, string>(
+                LogLevel.Information,
+                2,
+                "Executing {FileResultType}, sending file with download name '{FileDownloadName}' ...");
 
             _authorizationFailure = LoggerMessage.Define<object>(
                 LogLevel.Information,
-                1,
+                3,
                 "Authorization failed for the request at filter '{AuthorizationFilter}'.");
 
             _resourceFilterShortCircuit = LoggerMessage.Define<object>(
                 LogLevel.Debug,
-                2,
+                4,
                 "Request was short circuited at resource filter '{ResourceFilter}'.");
+
+            _resultFilterShortCircuit = LoggerMessage.Define<object>(
+                LogLevel.Debug,
+                5,
+                "Request was short circuited at result filter '{ResultFilter}'.");
 
             _actionFilterShortCircuit = LoggerMessage.Define<object>(
                 LogLevel.Debug,
@@ -171,7 +275,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             _objectResultExecuting = LoggerMessage.Define<string>(
                 LogLevel.Information,
                 1,
-                "Executing ObjectResult, writing value {Value}.");
+                "Executing ObjectResult, writing value of type '{Type}'.");
 
             _formatterSelected = LoggerMessage.Define<IOutputFormatter, string>(
                 LogLevel.Debug,
@@ -237,6 +341,295 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 LogLevel.Debug,
                 3,
                 "No actions matched the current request. Route values: {RouteValues}");
+
+            _featureNotFound = LoggerMessage.Define(
+                LogLevel.Warning,
+                1,
+                "A request body size limit could not be applied. This server does not support the IHttpRequestBodySizeFeature.");
+
+            _featureIsReadOnly = LoggerMessage.Define(
+                LogLevel.Warning,
+                2,
+                "A request body size limit could not be applied. The IHttpRequestBodySizeFeature for the server is read-only.");
+
+            _maxRequestBodySizeSet = LoggerMessage.Define<string>(
+                LogLevel.Debug,
+                3,
+                "The maximum request body size has been set to {RequestSize}.");
+
+            _requestBodySizeLimitDisabled = LoggerMessage.Define(
+                LogLevel.Debug,
+                3,
+                "The request body size limit has been disabled.");
+
+            _cannotApplyRequestFormLimits = LoggerMessage.Define(
+                LogLevel.Warning,
+                1,
+                "Unable to apply configured form options since the request form has already been read.");
+
+            _appliedRequestFormLimits = LoggerMessage.Define(
+                LogLevel.Debug,
+                2,
+                "Applied the configured form options on the current request.");
+
+            _modelStateInvalidFilterExecuting = LoggerMessage.Define(
+                LogLevel.Debug,
+                1,
+                "The request has model state errors, returning an error response.");
+
+            _inferredParameterSource = LoggerMessage.Define<MethodInfo, string, string>(
+                LogLevel.Debug,
+                1,
+                "Inferred binding source for '{ParameterName}` on `{ActionName}` as {BindingSource}.");
+
+            _unableToInferParameterSources = LoggerMessage.Define<MethodInfo>(
+                LogLevel.Warning,
+                2,
+                "Unable to unambiguously infer binding sources for parameters on '{ActionName}'. More than one parameter may be inferred to bound from body.");
+
+            _unsupportedFormatFilterContentType = LoggerMessage.Define<string>(
+                LogLevel.Debug,
+                1,
+                "Could not find a media type for the format '{FormatFilterContentType}'.");
+
+            _actionDoesNotSupportFormatFilterContentType = LoggerMessage.Define<string, MediaTypeCollection>(
+                LogLevel.Debug,
+                2,
+                "Current action does not support the content type '{FormatFilterContentType}'. The supported content types are '{SupportedMediaTypes}'.");
+
+            _cannotApplyFormatFilterContentType = LoggerMessage.Define<string>(
+                LogLevel.Debug,
+                3,
+                "Cannot apply content type '{FormatFilterContentType}' to the response as current action had explicitly set a preferred content type.");
+
+            _notMostEffectiveFilter = LoggerMessage.Define<Type, Type, Type>(
+                LogLevel.Debug,
+                4,
+                "Execution of filter {OverriddenFilter} is preempted by filter {OverridingFilter} which is the most effective filter implementing policy {FilterPolicy}.");
+
+            _actionDoesNotExplicitlySpecifyContentTypes = LoggerMessage.Define(
+                LogLevel.Debug,
+                5,
+                "Current action does not explicitly specify any content types for the response.");
+
+            _selectingOutputFormatterUsingAcceptHeader = LoggerMessage.Define<IEnumerable<MediaTypeSegmentWithQuality>>(
+                LogLevel.Debug,
+                6,
+                "Attempting to select an output formatter based on Accept header '{AcceptHeader}'.");
+
+            _selectingOutputFormatterUsingAcceptHeaderAndExplicitContentTypes = LoggerMessage.Define<IEnumerable<MediaTypeSegmentWithQuality>, MediaTypeCollection>(
+                LogLevel.Debug,
+                7,
+                "Attempting to select an output formatter based on Accept header '{AcceptHeader}' and explicitly specified content types '{ExplicitContentTypes}'. The content types in the accept header must be a subset of the explicitly set content types.");
+
+            _selectingOutputFormatterWithoutUsingContentTypes = LoggerMessage.Define(
+                LogLevel.Debug,
+                8,
+                "Attempting to select an output formatter without using a content type as no explicit content types were specified for the response.");
+
+            _selectingOutputFormatterUsingContentTypes = LoggerMessage.Define<MediaTypeCollection>(
+                LogLevel.Debug,
+                9,
+                "Attempting to select the first output formatter in the output formatters list which supports a content type from the explicitly specified content types '{ExplicitContentTypes}'.");
+
+            _selectingFirstCanWriteFormatter = LoggerMessage.Define(
+                LogLevel.Debug,
+                10,
+                "Attempting to select the first formatter in the output formatters list which can write the result.");
+
+            _registeredOutputFormatters = LoggerMessage.Define<IEnumerable<IOutputFormatter>>(
+                LogLevel.Debug,
+                11,
+                "List of registered output formatters, in the following order: {OutputFormatters}");
+
+            _writingRangeToBody = LoggerMessage.Define(
+                LogLevel.Debug,
+                17,
+                "Writing the requested range of bytes to the body...");
+
+            _registeredModelBinderProviders = LoggerMessage.Define<IModelBinderProvider[]>(
+                LogLevel.Debug,
+                12,
+                "Registered model binder providers, in the following order: {ModelBinderProviders}");
+
+            _attemptingToBindPropertyModel = LoggerMessage.Define<Type, string, Type, string>(
+               LogLevel.Debug,
+               13,
+               "Attempting to bind property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}' using the name '{ModelName}' in request data ...");
+
+            _doneAttemptingToBindPropertyModel = LoggerMessage.Define<Type, string, Type>(
+               LogLevel.Debug,
+               14,
+               "Done attempting to bind property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}'.");
+
+            _foundNoValueForPropertyInRequest = LoggerMessage.Define<string, Type, string, Type>(
+               LogLevel.Debug,
+               15,
+               "Could not find a value in the request with name '{ModelName}' for binding property '{PropertyContainerType}.{ModelFieldName}' of type '{ModelType}'.");
+
+            _foundNoValueInRequest = LoggerMessage.Define<string, string, Type>(
+               LogLevel.Debug,
+               16,
+               "Could not find a value in the request with name '{ModelName}' for binding parameter '{ModelFieldName}' of type '{ModelType}'.");
+
+            _noPublicSettableProperties = LoggerMessage.Define<string, Type>(
+               LogLevel.Debug,
+               17,
+               "Could not bind to model with name '{ModelName}' and type '{ModelType}' as the type has no public settable properties.");
+
+            _cannotBindToComplexType = LoggerMessage.Define<Type>(
+               LogLevel.Debug,
+               18,
+               "Could not bind to model of type '{ModelType}' as there were no values in the request for any of the properties.");
+
+            _cannotBindToFilesCollectionDueToUnsupportedContentType = LoggerMessage.Define<string, Type>(
+               LogLevel.Debug,
+               19,
+               "Could not bind to model with name '{ModelName}' and type '{ModelType}' as the request did not have a content type of either 'application/x-www-form-urlencoded' or 'multipart/form-data'.");
+
+            _cannotCreateHeaderModelBinder = LoggerMessage.Define<Type>(
+               LogLevel.Debug,
+               20,
+               "Could not create a binder for type '{ModelType}' as this binder only supports 'System.String' type or a collection of 'System.String'.");
+
+            _noFilesFoundInRequest = LoggerMessage.Define(
+                LogLevel.Debug,
+                21,
+                "No files found in the request to bind the model to.");
+
+            _attemptingToBindParameter = LoggerMessage.Define<string, Type>(
+                LogLevel.Debug,
+                22,
+                "Attempting to bind parameter '{ParameterName}' of type '{ModelType}' ...");
+
+            _doneAttemptingToBindParameter = LoggerMessage.Define<string, Type>(
+                LogLevel.Debug,
+                23,
+                "Done attempting to bind parameter '{ParameterName}' of type '{ModelType}'.");
+
+            _attemptingToBindModel = LoggerMessage.Define<Type, string>(
+                LogLevel.Debug,
+                24,
+                "Attempting to bind model of type '{ModelType}' using the name '{ModelName}' in request data ...");
+
+            _doneAttemptingToBindModel = LoggerMessage.Define<Type, string>(
+                LogLevel.Debug,
+                25,
+                "Done attempting to bind model of type '{ModelType}' using the name '{ModelName}'.");
+
+            _attemptingToValidateParameter = LoggerMessage.Define<string, Type>(
+                LogLevel.Debug,
+                26,
+                "Attempting to validate the bound parameter '{ParameterName}' of type '{ModelType}' ...");
+
+            _doneAttemptingToValidateParameter = LoggerMessage.Define<string, Type>(
+                LogLevel.Debug,
+                27,
+                "Done attempting to validate the bound parameter '{ParameterName}' of type '{ModelType}'.");
+
+            _noNonIndexBasedFormatFoundForCollection = LoggerMessage.Define<string, string>(
+                LogLevel.Debug,
+                28,
+                "Could not bind to collection using a format like {ModelName}=value1&{ModelName}=value2");
+
+            _attemptingToBindCollectionUsingIndices = LoggerMessage.Define<string, string, string, string, string, string>(
+                LogLevel.Debug,
+                29,
+                "Attempting to bind model using indices. Example formats include: " +
+                "[0]=value1&[1]=value2, " +
+                "{ModelName}[0]=value1&{ModelName}[1]=value2, " +
+                "{ModelName}.index=zero&{ModelName}.index=one&{ModelName}[zero]=value1&{ModelName}[one]=value2");
+
+            _attemptingToBindCollectionOfKeyValuePair = LoggerMessage.Define<string, string, string, string, string, string>(
+                LogLevel.Debug,
+                30,
+                "Attempting to bind collection of KeyValuePair. Example formats include: " +
+                "[0].Key=key1&[0].Value=value1&[1].Key=key2&[1].Value=value2, " +
+                "{ModelName}[0].Key=key1&{ModelName}[0].Value=value1&{ModelName}[1].Key=key2&{ModelName}[1].Value=value2, " +
+                "{ModelName}[key1]=value1&{ModelName}[key2]=value2");
+
+            _noKeyValueFormatForDictionaryModelBinder = LoggerMessage.Define<string, string, string>(
+                LogLevel.Debug,
+                33,
+                "Attempting to bind model with name '{ModelName}' using the format {ModelName}[key1]=value1&{ModelName}[key2]=value2");
+
+            _ifMatchPreconditionFailed = LoggerMessage.Define<EntityTagHeaderValue>(
+                LogLevel.Debug,
+                34,
+                "Current request's If-Match header check failed as the file's current etag '{CurrentETag}' does not match with any of the supplied etags.");
+
+            _ifUnmodifiedSincePreconditionFailed = LoggerMessage.Define<DateTimeOffset?, DateTimeOffset?>(
+                LogLevel.Debug,
+                35,
+                "Current request's If-Unmodified-Since header check failed as the file was modified (at '{lastModified}') after the If-Unmodified-Since date '{IfUnmodifiedSinceDate}'.");
+
+            _ifRangeLastModifiedPreconditionFailed = LoggerMessage.Define<DateTimeOffset?, DateTimeOffset?>(
+                LogLevel.Debug,
+                36,
+                "Could not serve range as the file was modified (at {LastModified}) after the if-Range's last modified date '{IfRangeLastModified}'.");
+
+            _ifRangeETagPreconditionFailed = LoggerMessage.Define<EntityTagHeaderValue, EntityTagHeaderValue>(
+                LogLevel.Debug,
+                37,
+                "Could not serve range as the file's current etag '{CurrentETag}' does not match the If-Range etag '{IfRangeETag}'.");
+
+            _notEnabledForRangeProcessing = LoggerMessage.Define(
+                LogLevel.Debug,
+                38,
+                $"The file result has not been enabled for processing range requests. To enable it, set the property '{nameof(FileResult.EnableRangeProcessing)}' on the result to 'true'.");
+
+            _attemptingToBindProperty = LoggerMessage.Define<Type, string, Type>(
+                LogLevel.Debug,
+                39,
+                "Attempting to bind property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}' ...");
+
+            _doneAttemptingToBindProperty = LoggerMessage.Define<Type, string, Type>(
+                LogLevel.Debug,
+                40,
+                "Done attempting to bind property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}'.");
+
+            _attemptingToValidateProperty = LoggerMessage.Define<Type, string, Type>(
+                LogLevel.Debug,
+                41,
+                "Attempting to validate the bound property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}' ...");
+
+            _doneAttemptingToValidateProperty = LoggerMessage.Define<Type, string, Type>(
+                LogLevel.Debug,
+                42,
+                "Done attempting to validate the bound property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}'.");
+        }
+
+        public static void RegisteredOutputFormatters(this ILogger logger, IEnumerable<IOutputFormatter> outputFormatters)
+        {
+            _registeredOutputFormatters(logger, outputFormatters, null);
+        }
+
+        public static void SelectingOutputFormatterUsingAcceptHeaderAndExplicitContentTypes(
+            this ILogger logger,
+            IEnumerable<MediaTypeSegmentWithQuality> acceptHeader,
+            MediaTypeCollection mediaTypeCollection)
+        {
+            _selectingOutputFormatterUsingAcceptHeaderAndExplicitContentTypes(logger, acceptHeader, mediaTypeCollection, null);
+        }
+
+        public static void SelectingOutputFormatterUsingAcceptHeader(this ILogger logger, IEnumerable<MediaTypeSegmentWithQuality> acceptHeader)
+        {
+            _selectingOutputFormatterUsingAcceptHeader(logger, acceptHeader, null);
+        }
+
+        public static void SelectingOutputFormatterUsingContentTypes(this ILogger logger, MediaTypeCollection mediaTypeCollection)
+        {
+            _selectingOutputFormatterUsingContentTypes(logger, mediaTypeCollection, null);
+        }
+
+        public static void SelectingOutputFormatterWithoutUsingContentTypes(this ILogger logger)
+        {
+            _selectingOutputFormatterWithoutUsingContentTypes(logger, null);
+        }
+
+        public static void SelectFirstCanWriteFormatter(this ILogger logger)
+        {
+            _selectingFirstCanWriteFormatter(logger, null);
         }
 
         public static IDisposable ActionScope(this ILogger logger, ActionDescriptor action)
@@ -247,6 +640,79 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         public static void ExecutingAction(this ILogger logger, ActionDescriptor action)
         {
             _actionExecuting(logger, action.DisplayName, null);
+        }
+
+        public static void AuthorizationFiltersExecutionPlan(this ILogger logger, IEnumerable<IFilterMetadata> filters)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var authorizationFilters = filters.Where(f => f is IAuthorizationFilter || f is IAsyncAuthorizationFilter);
+            LogFilterExecutionPlan(logger, "authorization", authorizationFilters);
+        }
+
+        public static void ResourceFiltersExecutionPlan(this ILogger logger, IEnumerable<IFilterMetadata> filters)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var resourceFilters = filters.Where(f => f is IResourceFilter || f is IAsyncResourceFilter);
+            LogFilterExecutionPlan(logger, "resource", resourceFilters);
+        }
+
+        public static void ActionFiltersExecutionPlan(this ILogger logger, IEnumerable<IFilterMetadata> filters)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var actionFilters = filters.Where(f => f is IActionFilter || f is IAsyncActionFilter);
+            LogFilterExecutionPlan(logger, "action", actionFilters);
+        }
+
+        public static void ExceptionFiltersExecutionPlan(this ILogger logger, IEnumerable<IFilterMetadata> filters)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var exceptionFilters = filters.Where(f => f is IExceptionFilter || f is IAsyncExceptionFilter);
+            LogFilterExecutionPlan(logger, "exception", exceptionFilters);
+        }
+
+        public static void ResultFiltersExecutionPlan(this ILogger logger, IEnumerable<IFilterMetadata> filters)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var resultFilters = filters.Where(f => f is IResultFilter || f is IAsyncResultFilter);
+            LogFilterExecutionPlan(logger, "result", resultFilters);
+        }
+
+        public static void BeforeExecutingMethodOnFilter(
+            this ILogger logger,
+            string filterType,
+            string methodName,
+            IFilterMetadata filter)
+        {
+            _beforeExecutingMethodOnFilter(logger, filterType, methodName, filter.GetType(), null);
+        }
+
+        public static void AfterExecutingMethodOnFilter(
+            this ILogger logger,
+            string filterType,
+            string methodName,
+            IFilterMetadata filter)
+        {
+            _afterExecutingMethodOnFilter(logger, filterType, methodName, filter.GetType(), null);
         }
 
         public static void ExecutedAction(this ILogger logger, ActionDescriptor action, long startTimestamp)
@@ -290,6 +756,16 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         public static void ContentResultExecuting(this ILogger logger, string contentType)
         {
             _contentResultExecuting(logger, contentType, null);
+        }
+
+        public static void BeforeExecutingActionResult(this ILogger logger, IActionResult actionResult)
+        {
+            _beforeExecutingActionResult(logger, actionResult.GetType(), null);
+        }
+
+        public static void AfterExecutingActionResult(this ILogger logger, IActionResult actionResult)
+        {
+            _afterExecutingActionResult(logger, actionResult.GetType(), null);
         }
 
         public static void ActionMethodExecuting(this ILogger logger, ControllerContext context, object[] arguments)
@@ -341,9 +817,24 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             _constraintMismatch(logger, actionName, actionId, actionConstraint, null);
         }
 
-        public static void FileResultExecuting(this ILogger logger, string fileDownloadName)
+        public static void ExecutingFileResult(this ILogger logger, FileResult fileResult)
         {
-            _fileResultExecuting(logger, fileDownloadName, null);
+            _executingFileResultWithNoFileName(logger, fileResult, fileResult.FileDownloadName, null);
+        }
+
+        public static void ExecutingFileResult(this ILogger logger, FileResult fileResult, string fileName)
+        {
+            _executingFileResult(logger, fileResult, fileName, fileResult.FileDownloadName, null);
+        }
+
+        public static void NotEnabledForRangeProcessing(this ILogger logger)
+        {
+            _notEnabledForRangeProcessing(logger, null);
+        }
+
+        public static void WritingRangeToBody(this ILogger logger)
+        {
+            _writingRangeToBody(logger, null);
         }
 
         public static void AuthorizationFailure(
@@ -358,6 +849,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             IFilterMetadata filter)
         {
             _resourceFilterShortCircuit(logger, filter, null);
+        }
+
+        public static void ResultFilterShortCircuited(
+            this ILogger logger,
+            IFilterMetadata filter)
+        {
+            _resultFilterShortCircuit(logger, filter, null);
         }
 
         public static void ExceptionFilterShortCircuited(
@@ -409,13 +907,14 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             if (logger.IsEnabled(LogLevel.Information))
             {
-                _objectResultExecuting(logger, Convert.ToString(value), null);
+                var type = value == null ? "null" : value.GetType().FullName;
+                _objectResultExecuting(logger, type, null);
             }
         }
 
         public static void NoFormatter(
             this ILogger logger,
-            OutputFormatterWriteContext formatterContext)
+            OutputFormatterCanWriteContext formatterContext)
         {
             if (logger.IsEnabled(LogLevel.Warning))
             {
@@ -426,7 +925,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         public static void FormatterSelected(
             this ILogger logger,
             IOutputFormatter outputFormatter,
-            OutputFormatterWriteContext context)
+            OutputFormatterCanWriteContext context)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
@@ -509,6 +1008,341 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         public static void RedirectToPageResultExecuting(this ILogger logger, string page)
             => _redirectToPageResultExecuting(logger, page, null);
 
+        public static void FeatureNotFound(this ILogger logger)
+        {
+            _featureNotFound(logger, null);
+        }
+
+        public static void FeatureIsReadOnly(this ILogger logger)
+        {
+            _featureIsReadOnly(logger, null);
+        }
+
+        public static void MaxRequestBodySizeSet(this ILogger logger, string requestSize)
+        {
+            _maxRequestBodySizeSet(logger, requestSize, null);
+        }
+
+        public static void RequestBodySizeLimitDisabled(this ILogger logger)
+        {
+            _requestBodySizeLimitDisabled(logger, null);
+        }
+
+        public static void CannotApplyRequestFormLimits(this ILogger logger)
+        {
+            _cannotApplyRequestFormLimits(logger, null);
+        }
+
+        public static void AppliedRequestFormLimits(this ILogger logger)
+        {
+            _appliedRequestFormLimits(logger, null);
+        }
+
+        public static void NotMostEffectiveFilter(this ILogger logger, Type overridenFilter, Type overridingFilter, Type policyType)
+        {
+            _notMostEffectiveFilter(logger, overridenFilter, overridingFilter, policyType, null);
+        }
+
+        public static void UnsupportedFormatFilterContentType(this ILogger logger, string format)
+        {
+            _unsupportedFormatFilterContentType(logger, format, null);
+        }
+
+        public static void ActionDoesNotSupportFormatFilterContentType(
+            this ILogger logger,
+            string format,
+            MediaTypeCollection supportedMediaTypes)
+        {
+            _actionDoesNotSupportFormatFilterContentType(logger, format, supportedMediaTypes, null);
+        }
+
+        public static void CannotApplyFormatFilterContentType(this ILogger logger, string format)
+        {
+            _cannotApplyFormatFilterContentType(logger, format, null);
+        }
+
+        public static void ActionDoesNotExplicitlySpecifyContentTypes(this ILogger logger)
+        {
+            _actionDoesNotExplicitlySpecifyContentTypes(logger, null);
+        }
+
+        public static void ModelStateInvalidFilterExecuting(this ILogger logger) => _modelStateInvalidFilterExecuting(logger, null);
+
+        public static void InferredParameterBindingSource(
+            this ILogger logger,
+            ParameterModel parameterModel,
+            BindingSource bindingSource)
+        {
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                _inferredParameterSource(logger, parameterModel.Action.ActionMethod, parameterModel.ParameterName, bindingSource.DisplayName, null);
+            }
+        }
+
+        public static void UnableToInferBindingSource(
+            this ILogger logger,
+            ActionModel actionModel)
+        {
+            if (logger.IsEnabled(LogLevel.Warning))
+            {
+                _unableToInferParameterSources(logger, actionModel.ActionMethod, null);
+            }
+        }
+
+        public static void IfMatchPreconditionFailed(this ILogger logger, EntityTagHeaderValue etag)
+        {
+            _ifMatchPreconditionFailed(logger, etag, null);
+        }
+
+        public static void IfUnmodifiedSincePreconditionFailed(
+            this ILogger logger,
+            DateTimeOffset? lastModified,
+            DateTimeOffset? ifUnmodifiedSinceDate)
+        {
+            _ifUnmodifiedSincePreconditionFailed(logger, lastModified, ifUnmodifiedSinceDate, null);
+        }
+
+        public static void IfRangeLastModifiedPreconditionFailed(
+            this ILogger logger,
+            DateTimeOffset? lastModified,
+            DateTimeOffset? ifRangeLastModifiedDate)
+        {
+            _ifRangeLastModifiedPreconditionFailed(logger, lastModified, ifRangeLastModifiedDate, null);
+        }
+
+        public static void IfRangeETagPreconditionFailed(
+            this ILogger logger,
+            EntityTagHeaderValue currentETag,
+            EntityTagHeaderValue ifRangeTag)
+        {
+            _ifRangeETagPreconditionFailed(logger, currentETag, ifRangeTag, null);
+        }
+
+        public static void RegisteredModelBinderProviders(this ILogger logger, IModelBinderProvider[] providers)
+        {
+            _registeredModelBinderProviders(logger, providers, null);
+        }
+
+        public static void FoundNoValueInRequest(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var modelMetadata = bindingContext.ModelMetadata;
+            var isProperty = modelMetadata.ContainerType != null;
+
+            if (isProperty)
+            {
+                _foundNoValueForPropertyInRequest(
+                    logger,
+                    bindingContext.ModelName,
+                    modelMetadata.ContainerType,
+                    modelMetadata.PropertyName,
+                    bindingContext.ModelType,
+                    null);
+            }
+            else
+            {
+                _foundNoValueInRequest(
+                    logger,
+                    bindingContext.ModelName,
+                    modelMetadata.PropertyName,
+                    bindingContext.ModelType,
+                    null);
+            }
+        }
+
+        public static void NoPublicSettableProperties(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _noPublicSettableProperties(logger, bindingContext.ModelName, bindingContext.ModelType, null);
+        }
+
+        public static void CannotBindToComplexType(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _cannotBindToComplexType(logger, bindingContext.ModelType, null);
+        }
+
+        public static void CannotBindToFilesCollectionDueToUnsupportedContentType(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _cannotBindToFilesCollectionDueToUnsupportedContentType(logger, bindingContext.ModelName, bindingContext.ModelType, null);
+        }
+
+        public static void CannotCreateHeaderModelBinder(this ILogger logger, Type modelType)
+        {
+            _cannotCreateHeaderModelBinder(logger, modelType, null);
+        }
+
+        public static void NoFilesFoundInRequest(this ILogger logger)
+        {
+            _noFilesFoundInRequest(logger, null);
+        }
+
+        public static void AttemptingToBindModel(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var modelMetadata = bindingContext.ModelMetadata;
+            var isProperty = modelMetadata.ContainerType != null;
+
+            if (isProperty)
+            {
+                _attemptingToBindPropertyModel(
+                    logger,
+                    modelMetadata.ContainerType,
+                    modelMetadata.PropertyName,
+                    modelMetadata.ModelType,
+                    bindingContext.ModelName,
+                    null);
+            }
+            else
+            {
+                _attemptingToBindModel(logger, bindingContext.ModelType, bindingContext.ModelName, null);
+            }
+        }
+
+        public static void DoneAttemptingToBindModel(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            var modelMetadata = bindingContext.ModelMetadata;
+            var isProperty = modelMetadata.ContainerType != null;
+
+            if (isProperty)
+            {
+                _doneAttemptingToBindPropertyModel(
+                    logger,
+                    modelMetadata.ContainerType,
+                    modelMetadata.PropertyName,
+                    modelMetadata.ModelType,
+                    null);
+            }
+            else
+            {
+                _doneAttemptingToBindModel(logger, bindingContext.ModelType, bindingContext.ModelName, null);
+            }
+        }
+
+        public static void AttemptingToBindParameterOrProperty(this ILogger logger, ParameterDescriptor parameter, ModelBindingContext bindingContext)
+        {
+            if (parameter is ControllerBoundPropertyDescriptor propertyDescriptor)
+            {
+                _attemptingToBindProperty(logger, propertyDescriptor.PropertyInfo.DeclaringType, parameter.Name, bindingContext.ModelType, null);
+            }
+            else
+            {
+                _attemptingToBindParameter(logger, parameter.Name, bindingContext.ModelType, null);
+            }
+        }
+
+        public static void DoneAttemptingToBindParameterOrProperty(this ILogger logger, ParameterDescriptor parameter, ModelBindingContext bindingContext)
+        {
+            if (parameter is ControllerBoundPropertyDescriptor propertyDescriptor)
+            {
+                _doneAttemptingToBindProperty(logger, propertyDescriptor.PropertyInfo.DeclaringType, parameter.Name, bindingContext.ModelType, null);
+            }
+            else
+            {
+                _doneAttemptingToBindParameter(logger, parameter.Name, bindingContext.ModelType, null);
+            }
+        }
+
+        public static void AttemptingToValidateParameterOrProperty(this ILogger logger, ParameterDescriptor parameter, ModelBindingContext bindingContext)
+        {
+            if (parameter is ControllerBoundPropertyDescriptor propertyDescriptor)
+            {
+                _attemptingToValidateProperty(logger, propertyDescriptor.PropertyInfo.DeclaringType, parameter.Name, bindingContext.ModelType, null);
+            }
+            else
+            {
+                _attemptingToValidateParameter(logger, parameter.Name, bindingContext.ModelType, null);
+            }
+        }
+
+        public static void DoneAttemptingToValidateParameterOrProperty(this ILogger logger, ParameterDescriptor parameter, ModelBindingContext bindingContext)
+        {
+            if (parameter is ControllerBoundPropertyDescriptor propertyDescriptor)
+            {
+                _doneAttemptingToValidateProperty(logger, propertyDescriptor.PropertyInfo.DeclaringType, parameter.Name, bindingContext.ModelType, null);
+            }
+            else
+            {
+                _doneAttemptingToValidateParameter(logger, parameter.Name, bindingContext.ModelType, null);
+            }
+        }
+
+        public static void NoNonIndexBasedFormatFoundForCollection(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            var modelName = bindingContext.ModelName;
+            _noNonIndexBasedFormatFoundForCollection(logger, modelName, modelName, null);
+        }
+
+        public static void AttemptingToBindCollectionUsingIndices(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var modelName = bindingContext.ModelName;
+
+            var enumerableType = ClosedGenericMatcher.ExtractGenericInterface(bindingContext.ModelType, typeof(IEnumerable<>));
+            if (enumerableType != null)
+            {
+                var elementType = enumerableType.GenericTypeArguments[0];
+                if (elementType.IsGenericType && elementType.GetGenericTypeDefinition().GetTypeInfo() == typeof(KeyValuePair<,>).GetTypeInfo())
+                {
+                    _attemptingToBindCollectionOfKeyValuePair(logger, modelName, modelName, modelName, modelName, modelName, modelName, null);
+                    return;
+                }
+            }
+
+            _attemptingToBindCollectionUsingIndices(logger, modelName, modelName, modelName, modelName, modelName, modelName, null);
+        }
+
+        public static void NoKeyValueFormatForDictionaryModelBinder(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _noKeyValueFormatForDictionaryModelBinder(
+                logger,
+                bindingContext.ModelName,
+                bindingContext.ModelName,
+                bindingContext.ModelName,
+                null);
+        }
+
+        private static void LogFilterExecutionPlan(
+            ILogger logger,
+            string filterType,
+            IEnumerable<IFilterMetadata> filters)
+        {
+            var filterList = _noFilters;
+            if (filters.Any())
+            {
+                filterList = GetFilterList(filters);
+            }
+
+            _logFilterExecutionPlan(logger, filterType, filterList, null);
+        }
+
+        private static string[] GetFilterList(IEnumerable<IFilterMetadata> filters)
+        {
+            var filterList = new List<string>();
+            foreach (var filter in filters)
+            {
+                if (filter is IOrderedFilter orderedFilter)
+                {
+                    filterList.Add($"{filter.GetType()} (Order: {orderedFilter.Order})");
+                }
+                else
+                {
+                    filterList.Add(filter.GetType().ToString());
+                }
+            }
+            return filterList.ToArray();
+        }
+
         private class ActionLogScope : IReadOnlyList<KeyValuePair<string, object>>
         {
             private readonly ActionDescriptor _action;
@@ -539,13 +1373,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 }
             }
 
-            public int Count
-            {
-                get
-                {
-                    return 2;
-                }
-            }
+            public int Count => 2;
 
             public IEnumerator<KeyValuePair<string, object>> GetEnumerator()
             {

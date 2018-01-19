@@ -23,9 +23,14 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
         private const string ExpiresOnAttributeName = "expires-on";
         private const string ExpiresAfterAttributeName = "expires-after";
         private const string ExpiresSlidingAttributeName = "expires-sliding";
-        private const string CacheKeyTokenSeparator = "||";
         private const string EnabledAttributeName = "enabled";
-        private static readonly char[] AttributeSeparator = new[] { ',' };
+
+        /// <summary>
+        /// The default duration, from the time the cache entry was added, when it should be evicted.
+        /// This default duration will only be used if no other expiration criteria is specified.
+        /// The default expiration time is a sliding expiration of 30 seconds.
+        /// </summary>
+        public static readonly TimeSpan DefaultExpiration = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// Creates a new <see cref="CacheTagHelperBase"/>.
@@ -37,13 +42,7 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
         }
 
         /// <inheritdoc />
-        public override int Order
-        {
-            get
-            {
-                return -1000;
-            }
-        }
+        public override int Order => -1000;
 
         /// <summary>
         /// Gets the <see cref="System.Text.Encodings.Web.HtmlEncoder"/> which encodes the content to be cached.
@@ -117,6 +116,5 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
         /// </summary>
         [HtmlAttributeName(EnabledAttributeName)]
         public bool Enabled { get; set; } = true;
-
     }
 }

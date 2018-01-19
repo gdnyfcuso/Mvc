@@ -2,13 +2,12 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Cors.Internal;
-using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Primitives;
 
 namespace Microsoft.AspNetCore.Mvc.Cors
@@ -18,8 +17,9 @@ namespace Microsoft.AspNetCore.Mvc.Cors
     /// </summary>
     public class CorsAuthorizationFilter : ICorsAuthorizationFilter
     {
-        private ICorsService _corsService;
-        private ICorsPolicyProvider _corsPolicyProvider;
+        private readonly ICorsService _corsService;
+        private readonly ICorsPolicyProvider _corsPolicyProvider;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// Creates a new instance of <see cref="CorsAuthorizationFilter"/>.
@@ -27,9 +27,39 @@ namespace Microsoft.AspNetCore.Mvc.Cors
         /// <param name="corsService">The <see cref="ICorsService"/>.</param>
         /// <param name="policyProvider">The <see cref="ICorsPolicyProvider"/>.</param>
         public CorsAuthorizationFilter(ICorsService corsService, ICorsPolicyProvider policyProvider)
+            : this(corsService, policyProvider, NullLoggerFactory.Instance)
         {
+        }
+
+        /// <summary>
+        /// Creates a new instance of <see cref="CorsAuthorizationFilter"/>.
+        /// </summary>
+        /// <param name="corsService">The <see cref="ICorsService"/>.</param>
+        /// <param name="policyProvider">The <see cref="ICorsPolicyProvider"/>.</param>
+        /// <param name="loggerFactory">The <see cref="ILoggerFactory"/>.</param>
+        public CorsAuthorizationFilter(
+            ICorsService corsService,
+            ICorsPolicyProvider policyProvider,
+            ILoggerFactory loggerFactory)
+        {
+            if (corsService == null)
+            {
+                throw new ArgumentNullException(nameof(corsService));
+            }
+
+            if (policyProvider == null)
+            {
+                throw new ArgumentNullException(nameof(policyProvider));
+            }
+
+            if (loggerFactory == null)
+            {
+                throw new ArgumentNullException(nameof(loggerFactory));
+            }
+
             _corsService = corsService;
             _corsPolicyProvider = policyProvider;
+            _logger = loggerFactory.CreateLogger(GetType());
         }
 
         /// <summary>
@@ -38,16 +68,9 @@ namespace Microsoft.AspNetCore.Mvc.Cors
         public string PolicyName { get; set; }
 
         /// <inheritdoc />
-        public int Order
-        {
-            get
-            {
-                // Since clients' preflight requests would not have data to authenticate requests, this
-                // filter must run before any other authorization filters.
-                return int.MinValue + 100;
-            }
-        }
-
+        // Since clients' preflight requests would not have data to authenticate requests, this
+        // filter must run before any other authorization filters.
+        public int Order => int.MinValue + 100;
 
         /// <inheritdoc />
         public async Task OnAuthorizationAsync(Filters.AuthorizationFilterContext context)
@@ -58,8 +81,9 @@ namespace Microsoft.AspNetCore.Mvc.Cors
             }
 
             // If this filter is not closest to the action, it is not applicable.
-            if (!IsClosestToAction(context.Filters))
+            if (!context.IsEffectivePolicy<ICorsAuthorizationFilter>(this))
             {
+                _logger.NotMostEffectiveFilter(typeof(ICorsAuthorizationFilter));
                 return;
             }
 
@@ -93,15 +117,6 @@ namespace Microsoft.AspNetCore.Mvc.Cors
 
                 // Continue with other filters and action.
             }
-        }
-
-        private bool IsClosestToAction(IEnumerable<IFilterMetadata> filters)
-        {
-            // If there are multiple ICorsAuthorizationFilter that are defined at the class and
-            // at the action level, the one closest to the action overrides the others.
-            // Since filterdescriptor collection is ordered (the last filter is the one closest to the action),
-            // we apply this constraint only if there is no ICorsAuthorizationFilter after this.
-            return filters.Last(filter => filter is ICorsAuthorizationFilter) == this;
         }
     }
 }

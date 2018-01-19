@@ -30,9 +30,10 @@ namespace RazorWebSite
                 {
                     options.FileProviders.Add(new EmbeddedFileProvider(
                         typeof(Startup).GetTypeInfo().Assembly,
-                        $"{nameof(RazorWebSite)}.EmbeddedViews"));
+                        $"{nameof(RazorWebSite)}.EmbeddedResources"));
                     options.FileProviders.Add(updateableFileProvider);
                     options.ViewLocationExpanders.Add(new NonMainPageViewLocationExpander());
+                    options.ViewLocationExpanders.Add(new BackSlashExpander());
                 })
                 .AddViewOptions(options =>
                 {
@@ -42,7 +43,7 @@ namespace RazorWebSite
                     options.HtmlHelperOptions.ValidationMessageElement = "validationMessageElement";
                     options.HtmlHelperOptions.ValidationSummaryMessageElement = "validationSummaryElement";
                 })
-                .AddViewLocalization(LanguageViewLocationExpanderFormat.SubFolder);
+                .AddMvcLocalization(LanguageViewLocationExpanderFormat.SubFolder);
 
             services.AddTransient<InjectedHelper>();
             services.AddTransient<TaskReturningService>();
@@ -51,6 +52,7 @@ namespace RazorWebSite
 
         public void Configure(IApplicationBuilder app)
         {
+            app.UseDeveloperExceptionPage();
             app.UseRequestLocalization(new RequestLocalizationOptions
             {
                 DefaultRequestCulture = new RequestCulture("en-GB", "en-US"),

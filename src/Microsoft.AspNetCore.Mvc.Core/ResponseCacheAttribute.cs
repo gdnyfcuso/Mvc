@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Core;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Microsoft.AspNetCore.Mvc
@@ -29,14 +30,8 @@ namespace Microsoft.AspNetCore.Mvc
         /// </summary>
         public int Duration
         {
-            get
-            {
-                return _duration ?? 0;
-            }
-            set
-            {
-                _duration = value;
-            }
+            get => _duration ?? 0;
+            set => _duration = value;
         }
 
         /// <summary>
@@ -44,14 +39,8 @@ namespace Microsoft.AspNetCore.Mvc
         /// </summary>
         public ResponseCacheLocation Location
         {
-            get
-            {
-                return _location ?? ResponseCacheLocation.Any;
-            }
-            set
-            {
-                _location = value;
-            }
+            get => _location ?? ResponseCacheLocation.Any;
+            set => _location = value;
         }
 
         /// <summary>
@@ -62,14 +51,8 @@ namespace Microsoft.AspNetCore.Mvc
         /// </summary>
         public bool NoStore
         {
-            get
-            {
-                return _noStore ?? false;
-            }
-            set
-            {
-                _noStore = value;
-            }
+            get => _noStore ?? false;
+            set => _noStore = value;
         }
 
         /// <summary>
@@ -96,20 +79,16 @@ namespace Microsoft.AspNetCore.Mvc
         /// <inheritdoc />
         public bool IsReusable => true;
 
-        /// <inheritdoc />
-        public IFilterMetadata CreateInstance(IServiceProvider serviceProvider)
+        /// <summary>
+        /// Gets the <see cref="CacheProfile"/> for this attribute.
+        /// </summary>
+        /// <returns></returns>
+        public CacheProfile GetCacheProfile(MvcOptions options)
         {
-            if (serviceProvider == null)
-            {
-                throw new ArgumentNullException(nameof(serviceProvider));
-            }
-
-            var optionsAccessor = serviceProvider.GetRequiredService<IOptions<MvcOptions>>();
-
             CacheProfile selectedProfile = null;
             if (CacheProfileName != null)
             {
-                optionsAccessor.Value.CacheProfiles.TryGetValue(CacheProfileName, out selectedProfile);
+                options.CacheProfiles.TryGetValue(CacheProfileName, out selectedProfile);
                 if (selectedProfile == null)
                 {
                     throw new InvalidOperationException(Resources.FormatCacheProfileNotFound(CacheProfileName));
@@ -127,16 +106,31 @@ namespace Microsoft.AspNetCore.Mvc
             VaryByHeader = VaryByHeader ?? selectedProfile?.VaryByHeader;
             VaryByQueryKeys = VaryByQueryKeys ?? selectedProfile?.VaryByQueryKeys;
 
-            // ResponseCacheFilter cannot take any null values. Hence, if there are any null values,
-            // the properties convert them to their defaults and are passed on.
-            return new ResponseCacheFilter(new CacheProfile
+            return new CacheProfile
             {
                 Duration = _duration,
                 Location = _location,
                 NoStore = _noStore,
                 VaryByHeader = VaryByHeader,
                 VaryByQueryKeys = VaryByQueryKeys,
-            });
+            };
+        }
+
+        /// <inheritdoc />
+        public IFilterMetadata CreateInstance(IServiceProvider serviceProvider)
+        {
+            if (serviceProvider == null)
+            {
+                throw new ArgumentNullException(nameof(serviceProvider));
+            }
+
+            var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+            var optionsAccessor = serviceProvider.GetRequiredService<IOptions<MvcOptions>>();
+            var cacheProfile = GetCacheProfile(optionsAccessor.Value);
+
+            // ResponseCacheFilter cannot take any null values. Hence, if there are any null values,
+            // the properties convert them to their defaults and are passed on.
+            return new ResponseCacheFilter(cacheProfile, loggerFactory);
         }
     }
 }

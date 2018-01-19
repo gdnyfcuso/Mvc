@@ -15,7 +15,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
     /// <typeparam name="TKey">The <see cref="Type"/> of the keys of the model dictionary.</typeparam>
     /// <typeparam name="TValue">The <see cref="Type"/> of the values of the model dictionary.</typeparam>
     /// <remarks>
-    /// This implemenation handles cases like:
+    /// This implementation handles cases like:
     /// <example>
     ///     Model: IDictionary&lt;string, Student&gt; 
     ///     Query String: ?students[Joey].Age=8&amp;students[Katherine].Age=9
@@ -83,21 +83,9 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 _keyMappingEnumerator = keyMappings.GetEnumerator();
             }
 
-            public ValidationEntry Current
-            {
-                get
-                {
-                    return _entry;
-                }
-            }
+            public ValidationEntry Current => _entry;
 
-            object IEnumerator.Current
-            {
-                get
-                {
-                    return Current;
-                }
-            }
+            object IEnumerator.Current => Current;
 
             public bool MoveNext()
             {

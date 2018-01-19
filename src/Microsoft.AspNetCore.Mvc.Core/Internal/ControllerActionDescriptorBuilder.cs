@@ -137,96 +137,38 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             ControllerModel controller,
             ActionModel action)
         {
-            var controllerAttributeRoutes = controller.Selectors
-                .Where(sm => sm.AttributeRouteModel != null)
-                .Select(sm => sm.AttributeRouteModel)
-                .ToList();
+            var defaultControllerConstraints = Enumerable.Empty<IActionConstraintMetadata>();
+            if (controller.Selectors.Count > 0)
+            {
+                defaultControllerConstraints = controller.Selectors[0].ActionConstraints
+                    .Where(constraint => !(constraint is IRouteTemplateProvider));
+            }
 
             var actionDescriptors = new List<ControllerActionDescriptor>();
-
-            foreach (var actionSelectorModel in action.Selectors)
+            foreach (var result in ActionAttributeRouteModel.GetAttributeRoutes(action))
             {
-                var actionAttributeRoute = actionSelectorModel.AttributeRouteModel;
+                var actionSelector = result.actionSelector;
+                var controllerSelector = result.controllerSelector;
 
-                // We check the action to see if the template allows combination behavior
-                // (It doesn't start with / or ~/) so that in the case where we have multiple
-                // [Route] attributes on the controller we don't end up creating multiple
-                if (actionAttributeRoute != null && actionAttributeRoute.IsAbsoluteTemplate)
+                var actionDescriptor = CreateActionDescriptor(action, result.route);
+                actionDescriptors.Add(actionDescriptor);
+                AddActionFilters(actionDescriptor, action.Filters, controller.Filters, application.Filters);
+
+                var controllerConstraints = defaultControllerConstraints;
+
+                if (controllerSelector?.AttributeRouteModel?.Attribute is IActionConstraintMetadata actionConstraint)
                 {
-                    // We're overriding the attribute routes on the controller, so filter out any metadata
-                    // from controller level routes.
-                    var actionDescriptor = CreateActionDescriptor(
-                        action,
-                        actionAttributeRoute,
-                        controllerAttributeRoute: null);
-
-                    actionDescriptors.Add(actionDescriptor);
-
-                    AddActionFilters(actionDescriptor, action.Filters, controller.Filters, application.Filters);
-
-                    // If we're using an attribute route on the controller, then filter out any additional
-                    // metadata from the 'other' attribute routes.
-                    IList<IActionConstraintMetadata> controllerConstraints = null;
-                    if (controller.Selectors.Count > 0)
-                    {
-                        controllerConstraints = controller.Selectors[0].ActionConstraints
-                            .Where(constraint => !(constraint is IRouteTemplateProvider)).ToList();
-                    }
-
-                    AddActionConstraints(actionDescriptor, action, actionSelectorModel, controllerConstraints);
+                    // Use the attribute route as a constraint if the controller selector participated in creating this route.
+                    controllerConstraints = controllerConstraints.Concat(new[] { actionConstraint });
                 }
-                else if (controllerAttributeRoutes.Count > 0)
-                {
-                    // We're using the attribute routes from the controller
-                    foreach (var controllerSelectorModel in controller.Selectors)
-                    {
-                        var controllerAttributeRoute = controllerSelectorModel.AttributeRouteModel;
 
-                        var actionDescriptor = CreateActionDescriptor(
-                            action,
-                            actionAttributeRoute,
-                            controllerAttributeRoute);
-
-                        actionDescriptors.Add(actionDescriptor);
-
-                        AddActionFilters(actionDescriptor, action.Filters, controller.Filters, application.Filters);
-
-                        // If we're using an attribute route on the controller, then filter out any additional
-                        // metadata from the 'other' attribute routes.
-                        var controllerConstraints = controllerSelectorModel.ActionConstraints
-                            .Where(c => c == controllerAttributeRoute?.Attribute || !(c is IRouteTemplateProvider));
-                        AddActionConstraints(actionDescriptor, action, actionSelectorModel, controllerConstraints);
-                    }
-                }
-                else
-                {
-                    // No attribute routes on the controller
-                    var actionDescriptor = CreateActionDescriptor(
-                        action,
-                        actionAttributeRoute,
-                        controllerAttributeRoute: null);
-                    actionDescriptors.Add(actionDescriptor);
-
-                    IList<IActionConstraintMetadata> controllerConstraints = null;
-                    if (controller.Selectors.Count > 0)
-                    {
-                        controllerConstraints = controller.Selectors[0].ActionConstraints;
-                    }
-
-                    // If there's no attribute route on the controller, then we use all of the filters/constraints
-                    // on the controller regardless.
-                    AddActionFilters(actionDescriptor, action.Filters, controller.Filters, application.Filters);
-                    AddActionConstraints(actionDescriptor, action, actionSelectorModel, controllerConstraints);
-                }
+                AddActionConstraints(actionDescriptor, actionSelector, controllerConstraints);
             }
 
             return actionDescriptors;
         }
 
-        private static ControllerActionDescriptor CreateActionDescriptor(
-            ActionModel action,
-            AttributeRouteModel actionAttributeRoute,
-            AttributeRouteModel controllerAttributeRoute)
+        private static ControllerActionDescriptor CreateActionDescriptor(ActionModel action, AttributeRouteModel routeModel)
         {
             var parameterDescriptors = new List<ParameterDescriptor>();
             foreach (var parameter in action.Parameters)
@@ -235,12 +177,12 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 parameterDescriptors.Add(parameterDescriptor);
             }
 
-            var actionDescriptor = new ControllerActionDescriptor()
+            var actionDescriptor = new ControllerActionDescriptor
             {
                 ActionName = action.ActionName,
                 MethodInfo = action.ActionMethod,
                 Parameters = parameterDescriptors,
-                AttributeRouteInfo = CreateAttributeRouteInfo(actionAttributeRoute, controllerAttributeRoute)
+                AttributeRouteInfo = CreateAttributeRouteInfo(routeModel),
             };
 
             return actionDescriptor;
@@ -353,32 +295,25 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 .ToList();
         }
 
-        private static AttributeRouteInfo CreateAttributeRouteInfo(
-            AttributeRouteModel action,
-            AttributeRouteModel controller)
+        private static AttributeRouteInfo CreateAttributeRouteInfo(AttributeRouteModel routeModel)
         {
-            var combinedRoute = AttributeRouteModel.CombineAttributeRouteModel(controller, action);
-
-            if (combinedRoute == null)
+            if (routeModel == null)
             {
                 return null;
             }
-            else
+
+            return new AttributeRouteInfo
             {
-                return new AttributeRouteInfo
-                {
-                    Template = combinedRoute.Template,
-                    Order = combinedRoute.Order ?? DefaultAttributeRouteOrder,
-                    Name = combinedRoute.Name,
-                    SuppressLinkGeneration = combinedRoute.SuppressLinkGeneration,
-                    SuppressPathMatching = combinedRoute.SuppressPathMatching,
-                };
-            }
+                Template = routeModel.Template,
+                Order = routeModel.Order ?? DefaultAttributeRouteOrder,
+                Name = routeModel.Name,
+                SuppressLinkGeneration = routeModel.SuppressLinkGeneration,
+                SuppressPathMatching = routeModel.SuppressPathMatching,
+            };
         }
 
         private static void AddActionConstraints(
             ControllerActionDescriptor actionDescriptor,
-            ActionModel action,
             SelectorModel selectorModel,
             IEnumerable<IActionConstraintMetadata> controllerConstraints)
         {
@@ -475,9 +410,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             string routeName,
             ControllerActionDescriptor actionDescriptor)
         {
-            IList<ActionDescriptor> namedActionGroup;
-
-            if (actionsByRouteName.TryGetValue(routeName, out namedActionGroup))
+            if (actionsByRouteName.TryGetValue(routeName, out var namedActionGroup))
             {
                 namedActionGroup.Add(actionDescriptor);
             }
@@ -499,10 +432,10 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             return namedRoutedErrors
                 .Select((error, i) =>
-                            Resources.FormatAttributeRoute_AggregateErrorMessage_ErrorNumber(
-                                i + 1,
-                                Environment.NewLine,
-                                error))
+                    Resources.FormatAttributeRoute_AggregateErrorMessage_ErrorNumber(
+                        i + 1,
+                        Environment.NewLine,
+                        error))
                 .ToList();
         }
 
@@ -673,8 +606,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 ActionModel action,
                 IList<ControllerActionDescriptor> actionDescriptors)
             {
-                IDictionary<ActionModel, IList<ControllerActionDescriptor>> actionsForMethod = null;
-                if (TryGetValue(action.ActionMethod, out actionsForMethod))
+                if (TryGetValue(action.ActionMethod, out var actionsForMethod))
                 {
                     actionsForMethod.Add(action, actionDescriptors);
                 }

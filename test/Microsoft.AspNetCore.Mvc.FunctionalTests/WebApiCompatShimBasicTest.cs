@@ -62,6 +62,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             {
                 typeof(JsonMediaTypeFormatter).FullName,
                 typeof(XmlMediaTypeFormatter).FullName,
+                typeof(FormUrlEncodedMediaTypeFormatter).FullName
             };
 
             // Act
@@ -140,7 +141,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var json = JsonConvert.DeserializeObject<Dictionary<string, string>>(response);
-            Assert.Equal(1, json.Count);
+            Assert.Single(json);
             Assert.Equal("The field ID must be between 0 and 100.", json["prefix.ID"]);
         }
 
@@ -162,7 +163,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var json = JsonConvert.DeserializeObject<Dictionary<string, string>>(response);
-            Assert.Equal(1, json.Count);
+            Assert.Single(json);
             Assert.Equal("The field ID must be between 0 and 100.", json["ID"]);
         }
 

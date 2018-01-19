@@ -2,76 +2,116 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
-using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
+using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 {
     internal static class PageLoggerExtensions
     {
-        private static readonly double TimestampToTicks = TimeSpan.TicksPerSecond / (double)Stopwatch.Frequency;
-        private static readonly Action<ILogger, string, Exception> _pageExecuting;
-        private static readonly Action<ILogger, string, double, Exception> _pageExecuted;
-        private static readonly Action<ILogger, object, Exception> _exceptionFilterShortCircuit;
+        public const string PageFilter = "Page Filter";
+
+        private static readonly Action<ILogger, string, string[], ModelValidationState, Exception> _handlerMethodExecuting;
+        private static readonly Action<ILogger, string, string, Exception> _handlerMethodExecuted;
         private static readonly Action<ILogger, object, Exception> _pageFilterShortCircuit;
+        private static readonly Action<ILogger, string, string[], Exception> _malformedPageDirective;
+        private static readonly Action<ILogger, string, string, string, string, Exception> _unsupportedAreaPath;
+        private static readonly Action<ILogger, Type, Exception> _notMostEffectiveFilter;
+        private static readonly Action<ILogger, string, string, string, Exception> _beforeExecutingMethodOnFilter;
+        private static readonly Action<ILogger, string, string, string, Exception> _afterExecutingMethodOnFilter;
 
         static PageLoggerExtensions()
         {
-            _pageExecuting = LoggerMessage.Define<string>(
-                LogLevel.Debug,
-                1,
-                "Executing page {ActionName}");
+            // These numbers start at 101 intentionally to avoid conflict with the IDs used by ResourceInvoker.
 
-            _pageExecuted = LoggerMessage.Define<string, double>(
+            _handlerMethodExecuting = LoggerMessage.Define<string, string[], ModelValidationState>(
                 LogLevel.Information,
-                2,
-                "Executed page {ActionName} in {ElapsedMilliseconds}ms");
+                101,
+                "Executing handler method {HandlerName} with arguments ({Arguments}) - ModelState is {ValidationState}");
 
-            _exceptionFilterShortCircuit = LoggerMessage.Define<object>(
+            _handlerMethodExecuted = LoggerMessage.Define<string, string>(
                 LogLevel.Debug,
-                4,
-                "Request was short circuited at exception filter '{ExceptionFilter}'.");
+                102,
+                "Executed handler method {HandlerName}, returned result {ActionResult}.");
 
             _pageFilterShortCircuit = LoggerMessage.Define<object>(
                LogLevel.Debug,
                3,
                "Request was short circuited at page filter '{PageFilter}'.");
+
+            _malformedPageDirective = LoggerMessage.Define<string, string[]>(
+                LogLevel.Warning,
+                104,
+                "The page directive at '{FilePath}' is malformed. Please fix the following issues: {Diagnostics}");
+
+            _notMostEffectiveFilter = LoggerMessage.Define<Type>(
+               LogLevel.Debug,
+               1,
+               "Skipping the execution of current filter as its not the most effective filter implementing the policy {FilterPolicy}.");
+
+            _beforeExecutingMethodOnFilter = LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                1,
+                "{FilterType}: Before executing {Method} on filter {Filter}.");
+
+            _afterExecutingMethodOnFilter = LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                2,
+                "{FilterType}: After executing {Method} on filter {Filter}.");
+
+            _unsupportedAreaPath = LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Warning,
+                1,
+                "The page at '{FilePath}' is located under the area root directory '{AreaRootDirectory}' but does not follow the path format '{AreaRootDirectory}{RootDirectory}/Directory/FileName.cshtml");
         }
 
-        public static IDisposable PageScope(this ILogger logger, ActionDescriptor actionDescriptor)
+        public static void ExecutingHandlerMethod(this ILogger logger, PageContext context, HandlerMethodDescriptor handler, object[] arguments)
         {
-            Debug.Assert(logger != null);
-            Debug.Assert(actionDescriptor != null);
-
-            return logger.BeginScope(new PageLogScope(actionDescriptor));
-        }
-
-        public static void ExecutingPage(this ILogger logger, ActionDescriptor action)
-        {
-            _pageExecuting(logger, action.DisplayName, null);
-        }
-
-        public static void ExecutedAction(this ILogger logger, ActionDescriptor action, long startTimestamp)
-        {
-            // Don't log if logging wasn't enabled at start of request as time will be wildly wrong.
-            if (logger.IsEnabled(LogLevel.Information) && startTimestamp != 0)
+            if (logger.IsEnabled(LogLevel.Information))
             {
-                var currentTimestamp = Stopwatch.GetTimestamp();
-                var elapsed = new TimeSpan((long)(TimestampToTicks * (currentTimestamp - startTimestamp)));
+                var handlerName = handler.MethodInfo.Name;
 
-                _pageExecuted(logger, action.DisplayName, elapsed.TotalMilliseconds, null);
+                string[] convertedArguments;
+                if (arguments == null)
+                {
+                    convertedArguments = null;
+                }
+                else
+                {
+                    convertedArguments = new string[arguments.Length];
+                    for (var i = 0; i < arguments.Length; i++)
+                    {
+                        convertedArguments[i] = Convert.ToString(arguments[i]);
+                    }
+                }
+
+                var validationState = context.ModelState.ValidationState;
+
+                _handlerMethodExecuting(logger, handlerName, convertedArguments, validationState, null);
             }
         }
 
-        public static void ExceptionFilterShortCircuited(
-            this ILogger logger,
-            IFilterMetadata filter)
+        public static void ExecutedHandlerMethod(this ILogger logger, PageContext context, HandlerMethodDescriptor handler, IActionResult result)
         {
-            _exceptionFilterShortCircuit(logger, filter, null);
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                var handlerName = handler.MethodInfo.Name;
+                _handlerMethodExecuted(logger, handlerName, Convert.ToString(result), null);
+            }
+        }
+
+        public static void BeforeExecutingMethodOnFilter(this ILogger logger, string filterType, string methodName, IFilterMetadata filter)
+        {
+            _beforeExecutingMethodOnFilter(logger, filterType, methodName, filter.GetType().ToString(), null);
+        }
+
+        public static void AfterExecutingMethodOnFilter(this ILogger logger, string filterType, string methodName, IFilterMetadata filter)
+        {
+            _afterExecutingMethodOnFilter(logger, filterType, methodName, filter.GetType().ToString(), null);
         }
 
         public static void PageFilterShortCircuited(
@@ -81,49 +121,31 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             _pageFilterShortCircuit(logger, filter, null);
         }
 
-        private class PageLogScope : IReadOnlyList<KeyValuePair<string, object>>
+        public static void MalformedPageDirective(this ILogger logger, string filePath, IList<RazorDiagnostic> diagnostics)
         {
-            private readonly ActionDescriptor _action;
-
-            public PageLogScope(ActionDescriptor action)
+            if (logger.IsEnabled(LogLevel.Warning))
             {
-                _action = action;
-            }
-
-            public KeyValuePair<string, object> this[int index]
-            {
-                get
+                var messages = new string[diagnostics.Count];
+                for (var i = 0; i < diagnostics.Count; i++)
                 {
-                    if (index == 0)
-                    {
-                        return new KeyValuePair<string, object>("ActionId", _action.Id);
-                    }
-                    else if (index == 1)
-                    {
-                        return new KeyValuePair<string, object>("PageName", _action.DisplayName);
-                    }
-                    throw new IndexOutOfRangeException(nameof(index));
+                    messages[i] = diagnostics[i].GetMessage();
                 }
+
+                _malformedPageDirective(logger, filePath, messages, null);
             }
+        }
 
-            public int Count => 2;
+        public static void NotMostEffectiveFilter(this ILogger logger, Type policyType)
+        {
+            _notMostEffectiveFilter(logger, policyType, null);
+        }
 
-            public IEnumerator<KeyValuePair<string, object>> GetEnumerator()
+        public static void UnsupportedAreaPath(this ILogger logger, RazorPagesOptions options, string filePath)
+        {
+            if (logger.IsEnabled(LogLevel.Warning))
             {
-                for (var i = 0; i < Count; ++i)
-                {
-                    yield return this[i];
-                }
+                _unsupportedAreaPath(logger, filePath, options.AreaRootDirectory, options.AreaRootDirectory, options.RootDirectory, null);
             }
-
-            public override string ToString()
-            {
-                // We don't include the _action.Id here because it's just an opaque guid, and if
-                // you have text logging, you can already use the requestId for correlation.
-                return _action.DisplayName;
-            }
-
-            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
     }
 }

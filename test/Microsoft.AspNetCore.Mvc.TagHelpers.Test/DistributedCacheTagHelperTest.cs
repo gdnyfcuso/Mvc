@@ -21,6 +21,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.WebEncoders.Testing;
 using Moq;
 using Xunit;
@@ -272,6 +273,29 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
         }
 
         [Fact]
+        public void UpdateCacheEntryOptions_DefaultsTo30SecondsSliding_IfNoEvictionCriteriaIsProvided()
+        {
+            // Arrange
+            var slidingExpiresIn = TimeSpan.FromSeconds(30);
+            var storage = GetStorage();
+            var service = new DistributedCacheTagHelperService(
+                storage,
+                Mock.Of<IDistributedCacheTagHelperFormatter>(),
+                new HtmlTestEncoder(),
+                NullLoggerFactory.Instance
+                );
+            var cacheTagHelper = new DistributedCacheTagHelper(
+                service,
+                new HtmlTestEncoder());
+
+            // Act
+            var cacheEntryOptions = cacheTagHelper.GetDistributedCacheEntryOptions();
+
+            // Assert
+            Assert.Equal(slidingExpiresIn, cacheEntryOptions.SlidingExpiration);
+        }
+
+        [Fact]
         public void UpdateCacheEntryOptions_SetsAbsoluteExpiration_IfExpiresAfterIsSet()
         {
             // Arrange
@@ -332,7 +356,7 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
             var clock = new Mock<ISystemClock>();
             clock.SetupGet(p => p.UtcNow)
                 .Returns(() => currentTime);
-            var storage = GetStorage(new MemoryCacheOptions { Clock = clock.Object });
+            var storage = GetStorage(Options.Create(new MemoryDistributedCacheOptions { Clock = clock.Object }));
             var service = new DistributedCacheTagHelperService(
                 storage,
                 Mock.Of<IDistributedCacheTagHelperFormatter>(),
@@ -394,7 +418,7 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
             var clock = new Mock<ISystemClock>();
             clock.SetupGet(p => p.UtcNow)
                 .Returns(() => currentTime);
-            var storage = GetStorage(new MemoryCacheOptions { Clock = clock.Object });
+            var storage = GetStorage(Options.Create(new MemoryDistributedCacheOptions { Clock = clock.Object }));
             var service = new DistributedCacheTagHelperService(
                 storage,
                 Mock.Of<IDistributedCacheTagHelperFormatter>(),
@@ -456,7 +480,7 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
             var clock = new Mock<ISystemClock>();
             clock.SetupGet(p => p.UtcNow)
                 .Returns(() => currentTime);
-            var storage = GetStorage(new MemoryCacheOptions { Clock = clock.Object });
+            var storage = GetStorage(Options.Create(new MemoryDistributedCacheOptions { Clock = clock.Object }));
             var service = new DistributedCacheTagHelperService(
                 storage,
                 Mock.Of<IDistributedCacheTagHelperFormatter>(),
@@ -752,9 +776,9 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
                 });
         }
 
-        private static IDistributedCacheTagHelperStorage GetStorage(MemoryCacheOptions options = null)
+        private static IDistributedCacheTagHelperStorage GetStorage(IOptions<MemoryDistributedCacheOptions> options = null)
         {
-            return new DistributedCacheTagHelperStorage(new MemoryDistributedCache(new MemoryCache(options ?? new MemoryCacheOptions())));
+            return new DistributedCacheTagHelperStorage(new MemoryDistributedCache(options ?? Options.Create(new MemoryDistributedCacheOptions())));
         }
 
         private static IDistributedCacheTagHelperFormatter GetFormatter()

@@ -1,16 +1,17 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Razor.Internal;
 using Microsoft.Extensions.FileProviders;
 using Moq;
 
 namespace Microsoft.AspNetCore.Mvc.RazorPages
 {
-    public class TestRazorProject : DefaultRazorProject
+    public class TestRazorProject : FileProviderRazorProject
     {
-        public TestRazorProject(IFileProvider fileProvider)
-            :base(GetAccessor(fileProvider))
+        public TestRazorProject(IFileProvider fileProvider, IHostingEnvironment hostingEnvironment)
+            :base(GetAccessor(fileProvider), hostingEnvironment)
         {
         }
 

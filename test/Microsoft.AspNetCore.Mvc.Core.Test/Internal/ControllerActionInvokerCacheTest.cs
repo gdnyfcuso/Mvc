@@ -1,19 +1,27 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.Collections.Generic;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Testing.xunit;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Microsoft.AspNetCore.Mvc.Internal
 {
     public class ControllerActionInvokerCacheTest
     {
-        [Fact]
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
         public void GetControllerActionMethodExecutor_CachesFilters()
         {
             // Arrange
@@ -27,15 +35,16 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 new[] { new DefaultFilterProvider() });
 
             // Act
-            var cacheEntry1 = controllerActionInvokerCache.GetState(controllerContext);
-            var cacheEntry2 = controllerActionInvokerCache.GetState(controllerContext);
+            var cacheEntry1 = controllerActionInvokerCache.GetCachedResult(controllerContext);
+            var cacheEntry2 = controllerActionInvokerCache.GetCachedResult(controllerContext);
 
             // Assert
-            Assert.Equal(cacheEntry1.Filters, cacheEntry2.Filters);
+            Assert.Equal(cacheEntry1.filters, cacheEntry2.filters);
         }
 
-        [Fact]
-        public void GetControllerActionMethodExecutor_CachesActionMethodExecutor()
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
+        public void GetControllerActionMethodExecutor_CachesEntry()
         {
             // Arrange
             var filter = new TestFilter();
@@ -48,11 +57,11 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 new[] { new DefaultFilterProvider() });
 
             // Act
-            var cacheEntry1 = controllerActionInvokerCache.GetState(controllerContext);
-            var cacheEntry2 = controllerActionInvokerCache.GetState(controllerContext);
+            var cacheEntry1 = controllerActionInvokerCache.GetCachedResult(controllerContext);
+            var cacheEntry2 = controllerActionInvokerCache.GetCachedResult(controllerContext);
 
             // Assert
-            Assert.Same(cacheEntry1.ActionMethodExecutor, cacheEntry2.ActionMethodExecutor);
+            Assert.Same(cacheEntry1.cacheEntry, cacheEntry2.cacheEntry);
         }
 
         private class TestFilter : IFilterMetadata
@@ -92,7 +101,20 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             var descriptorProvider = new CustomActionDescriptorCollectionProvider(
                 new[] { controllerContext.ActionDescriptor });
-            return new ControllerActionInvokerCache(descriptorProvider, filterProviders);
+            var modelMetadataProvider = TestModelMetadataProvider.CreateDefaultProvider();
+            var modelBinderFactory = TestModelBinderFactory.CreateDefault();
+
+            return new ControllerActionInvokerCache(
+                descriptorProvider,
+                new ParameterBinder(
+                    modelMetadataProvider,
+                    modelBinderFactory,
+                    Mock.Of<IModelValidatorProvider>(),
+                    NullLoggerFactory.Instance),
+                modelBinderFactory,
+                modelMetadataProvider,
+                filterProviders,
+                Mock.Of<IControllerFactoryProvider>());
         }
 
         private static ControllerContext CreateControllerContext(FilterDescriptor[] filterDescriptors)
@@ -101,7 +123,9 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 FilterDescriptors = filterDescriptors,
                 MethodInfo = typeof(TestController).GetMethod(nameof(TestController.Index)),
-                ControllerTypeInfo = typeof(TestController).GetTypeInfo()
+                ControllerTypeInfo = typeof(TestController).GetTypeInfo(),
+                Parameters = new List<ParameterDescriptor>(),
+                BoundProperties = new List<ParameterDescriptor>(),
             };
 
             var actionContext = new ActionContext(new DefaultHttpContext(), new RouteData(), actionDescriptor);

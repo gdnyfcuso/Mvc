@@ -1,8 +1,9 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Formatters;
@@ -10,8 +11,6 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Testing.xunit;
 using Newtonsoft.Json;
 using Xunit;
-using Microsoft.AspNetCore.Http;
-using System.Net;
 
 namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 {
@@ -87,7 +86,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var description = Assert.Single(result);
-            Assert.Equal(description.GroupName, "ApiExplorerNameSetByConvention");
+            Assert.Equal("ApiExplorerNameSetByConvention", description.GroupName);
         }
 
         [Fact]
@@ -101,7 +100,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var description = Assert.Single(result);
-            Assert.Equal(description.GroupName, "SetOnController");
+            Assert.Equal("SetOnController", description.GroupName);
         }
 
         [Fact]
@@ -115,7 +114,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var description = Assert.Single(result);
-            Assert.Equal(description.GroupName, "SetOnAction");
+            Assert.Equal("SetOnAction", description.GroupName);
         }
 
         [Fact]
@@ -129,7 +128,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var description = Assert.Single(result);
-            Assert.Equal(description.RelativePath, "ApiExplorerRouteAndPathParametersInformation");
+            Assert.Equal("ApiExplorerRouteAndPathParametersInformation", description.RelativePath);
         }
 
         [Fact]
@@ -143,7 +142,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var description = Assert.Single(result);
-            Assert.Equal(description.RelativePath, "ApiExplorerRouteAndPathParametersInformation/{id}");
+            Assert.Equal("ApiExplorerRouteAndPathParametersInformation/{id}", description.RelativePath);
 
             var parameter = Assert.Single(description.ParameterDescriptions);
             Assert.Equal("id", parameter.Name);
@@ -479,6 +478,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
         [Theory]
         [InlineData("GetProduct", "ApiExplorerWebSite.Product")]
+        [InlineData("GetActionResultProduct", "ApiExplorerWebSite.Product")]
         [InlineData("GetInt", "System.Int32")]
         [InlineData("GetTaskOfProduct", "ApiExplorerWebSite.Product")]
         [InlineData("GetTaskOfInt", "System.Int32")]
@@ -571,7 +571,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
         {
             // Arrange
             var type1 = typeof(ApiExplorerWebSite.Product).FullName;
-            var type2 = typeof(ModelStateDictionary).FullName;
+            var type2 = typeof(SerializableError).FullName;
             var expectedMediaTypes = new[] { "application/json", "text/json", "application/xml", "text/xml" };
 
             // Act
@@ -603,7 +603,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
         {
             // Arrange
             var type1 = typeof(ApiExplorerWebSite.Product).FullName;
-            var type2 = typeof(ModelStateDictionary).FullName;
+            var type2 = typeof(SerializableError).FullName;
             var expectedMediaTypes = new[] { "text/xml" };
 
             // Act
@@ -635,7 +635,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
         {
             // Arrange
             var type1 = typeof(ApiExplorerWebSite.Product).FullName;
-            var type2 = typeof(ModelStateDictionary).FullName;
+            var type2 = typeof(SerializableError).FullName;
             var expectedMediaTypes = new[] { "application/json", "text/json", "application/xml", "text/xml" };
 
             // Act
@@ -667,7 +667,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
         {
             // Arrange
             var type1 = typeof(ApiExplorerWebSite.Product).FullName;
-            var type2 = typeof(ModelStateDictionary).FullName;
+            var type2 = typeof(SerializableError).FullName;
             var expectedMediaTypes = new[] { "text/xml" };
 
             // Act
@@ -1065,6 +1065,107 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             Assert.Equal("ApiExplorerInboundOutbound/SuppressedForLinkGeneration", description.RelativePath);
         }
 
+        [Fact]
+        public async Task ProblemDetails_AddsProblemAsDefaultErrorResult()
+        {
+            // Act
+            var body = await Client.GetStringAsync("ApiExplorerApiController/ActionWithoutParameters");
+            var result = JsonConvert.DeserializeObject<List<ApiExplorerData>>(body);
+
+            // Assert
+            var description = Assert.Single(result);
+            Assert.Collection(
+                description.SupportedResponseTypes,
+                response =>
+                {
+                    Assert.Equal(0, response.StatusCode);
+                    Assert.True(response.IsDefaultResponse);
+                    AssertProblemDetails(response);
+                });
+        }
+
+        [Fact]
+        public async Task ProblemDetails_AddsProblemAsErrorResultForBadResult_WhenActionHasParameters()
+        {
+            // Act
+            var body = await Client.GetStringAsync("ApiExplorerApiController/ActionWithSomeParameters");
+            var result = JsonConvert.DeserializeObject<List<ApiExplorerData>>(body);
+
+            // Assert
+            var description = Assert.Single(result);
+            Assert.Collection(
+                description.SupportedResponseTypes.OrderBy(r => r.StatusCode),
+                response =>
+                {
+                    Assert.Equal(0, response.StatusCode);
+                    Assert.True(response.IsDefaultResponse);
+                    AssertProblemDetails(response);
+                },
+                response => Assert.Equal(200, response.StatusCode),
+                response =>
+                {
+                    Assert.Equal(400, response.StatusCode);
+                    Assert.False(response.IsDefaultResponse);
+                    AssertProblemDetails(response);
+                });
+        }
+
+        [Theory]
+        [InlineData("ApiExplorerApiController/ActionWithIdParameter")]
+        [InlineData("ApiExplorerApiController/ActionWithIdSuffixParameter")]
+        public async Task ProblemDetails_AddsProblemAsErrorResultForNotFoundResult_WhenActionHasAnIdParameters(string url)
+        {
+            // Act
+            var body = await Client.GetStringAsync(url);
+            var result = JsonConvert.DeserializeObject<List<ApiExplorerData>>(body);
+
+            // Assert
+            var description = Assert.Single(result);
+            Assert.Collection(
+                description.SupportedResponseTypes.OrderBy(r => r.StatusCode),
+                response =>
+                {
+                    Assert.Equal(0, response.StatusCode);
+                    Assert.True(response.IsDefaultResponse);
+                    AssertProblemDetails(response);
+                },
+                response => Assert.Equal(200, response.StatusCode),
+                response =>
+                {
+                    Assert.Equal(400, response.StatusCode);
+                    Assert.False(response.IsDefaultResponse);
+                    AssertProblemDetails(response);
+                },
+                response =>
+                {
+                    Assert.Equal(404, response.StatusCode);
+                    Assert.False(response.IsDefaultResponse);
+                    AssertProblemDetails(response);
+                });
+        }
+
+        [Fact]
+        public async Task ApiBehavior_AddsMultipartFormDataConsumesConstraint_ForActionsWithFormFileParameters()
+        {
+            // Act
+            var body = await Client.GetStringAsync("ApiExplorerApiController/ActionWithFormFileCollectionParameter");
+            var result = JsonConvert.DeserializeObject<List<ApiExplorerData>>(body);
+
+            // Assert
+            var description = Assert.Single(result);
+            var requestFormat = Assert.Single(description.SupportedRequestFormats);
+            Assert.Equal("multipart/form-data", requestFormat.MediaType);
+        }
+
+        private void AssertProblemDetails(ApiExplorerResponseType response)
+        {
+            Assert.Equal("Microsoft.AspNetCore.Mvc.ProblemDetails", response.ResponseType);
+                Assert.Collection(
+                    GetSortedMediaTypes(response),
+                    mediaType => Assert.Equal("application/problem+json", mediaType),
+                    mediaType => Assert.Equal("application/problem+xml", mediaType));
+        }
+
         private IEnumerable<string> GetSortedMediaTypes(ApiExplorerResponseType apiResponseType)
         {
             return apiResponseType.ResponseFormats
@@ -1084,6 +1185,8 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             public string RelativePath { get; set; }
 
             public List<ApiExplorerResponseType> SupportedResponseTypes { get; } = new List<ApiExplorerResponseType>();
+
+            public List<ApiExplorerRequestFormat> SupportedRequestFormats { get; } = new List<ApiExplorerRequestFormat>();
         }
 
         // Used to serialize data between client and server
@@ -1117,9 +1220,18 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             public string ResponseType { get; set; }
 
             public int StatusCode { get; set; }
+
+            public bool IsDefaultResponse { get; set; }
         }
 
         private class ApiExplorerResponseFormat
+        {
+            public string MediaType { get; set; }
+
+            public string FormatterType { get; set; }
+        }
+
+        private class ApiExplorerRequestFormat
         {
             public string MediaType { get; set; }
 

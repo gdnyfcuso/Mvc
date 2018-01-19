@@ -3,7 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
 {
@@ -29,7 +30,8 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                     propertyBinders.Add(property, context.CreateBinder(property));
                 }
 
-                return new ComplexTypeModelBinder(propertyBinders);
+                var loggerFactory = context.Services.GetRequiredService<ILoggerFactory>();
+                return new ComplexTypeModelBinder(propertyBinders, loggerFactory);
             }
 
             return null;

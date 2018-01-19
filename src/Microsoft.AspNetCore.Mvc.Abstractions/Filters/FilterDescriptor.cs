@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 
 namespace Microsoft.AspNetCore.Mvc.Filters
 {
@@ -18,9 +19,10 @@ namespace Microsoft.AspNetCore.Mvc.Filters
     /// with a higher value of Scope execute later in the pipeline. See <c>Microsoft.AspNetCore.Mvc.FilterScope</c>
     /// for commonly used scopes.
     ///
-    /// For <see cref="IExceptionFilter"/> implementions, the filter runs only after an exception has occurred,
+    /// For <see cref="IExceptionFilter"/> implementations, the filter runs only after an exception has occurred,
     /// and so the observed order of execution will be opposite that of other filters.
     /// </remarks>
+    [DebuggerDisplay("Filter = {Filter.ToString(),nq}, Order = {Order}")]
     public class FilterDescriptor
     {
         /// <summary>
@@ -43,9 +45,8 @@ namespace Microsoft.AspNetCore.Mvc.Filters
             Filter = filter;
             Scope = filterScope;
 
-            var orderedFilter = Filter as IOrderedFilter;
 
-            if (orderedFilter != null)
+            if (Filter is IOrderedFilter orderedFilter)
             {
                 Order = orderedFilter.Order;
             }
@@ -54,7 +55,7 @@ namespace Microsoft.AspNetCore.Mvc.Filters
         /// <summary>
         /// The <see cref="IFilterMetadata"/> instance.
         /// </summary>
-        public IFilterMetadata Filter { get; private set; }
+        public IFilterMetadata Filter { get; }
 
         /// <summary>
         /// The filter order.
@@ -64,6 +65,6 @@ namespace Microsoft.AspNetCore.Mvc.Filters
         /// <summary>
         /// The filter scope.
         /// </summary>
-        public int Scope { get; private set; }
+        public int Scope { get; }
     }
 }

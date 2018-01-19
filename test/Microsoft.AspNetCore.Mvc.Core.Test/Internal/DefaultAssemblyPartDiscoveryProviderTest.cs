@@ -227,7 +227,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         }
 
         // This test verifies DefaultAssemblyPartDiscoveryProvider.ReferenceAssemblies reflects the actual loadable assemblies
-        // of the libraries that Microsoft.AspNetCore.Mvc dependes on.
+        // of the libraries that Microsoft.AspNetCore.Mvc depends on.
         // If we add or remove dependencies, this test should be changed together.
         [Fact]
         public void ReferenceAssemblies_ReturnsLoadableReferenceAssemblies()
@@ -245,6 +245,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 // The following assemblies are not reachable from Microsoft.AspNetCore.Mvc
                 "Microsoft.AspNetCore.Mvc.Formatters.Xml",
+                "Microsoft.AspnetCore.All",
             };
 
             var dependencyContextLibraries = DependencyContext.Load(CurrentAssembly)

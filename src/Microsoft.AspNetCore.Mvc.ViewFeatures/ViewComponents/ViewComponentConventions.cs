@@ -3,13 +3,12 @@
 
 using System;
 using System.Reflection;
-using Microsoft.AspNetCore.Mvc.Core;
 
 namespace Microsoft.AspNetCore.Mvc.ViewComponents
 {
     public static class ViewComponentConventions
     {
-        private const string ViewComponentSuffix = "ViewComponent";
+        public static readonly string ViewComponentSuffix = "ViewComponent";
 
         public static string GetComponentName(TypeInfo componentType)
         {

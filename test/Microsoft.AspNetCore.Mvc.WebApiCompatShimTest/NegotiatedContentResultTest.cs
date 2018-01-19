@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,15 +69,15 @@ namespace System.Web.Http
 
         private static IServiceProvider CreateServices()
         {
-            var options = new OptionsManager<MvcOptions>(new IConfigureOptions<MvcOptions>[] { });
+            var options = Options.Create(new MvcOptions());
             options.Value.OutputFormatters.Add(new StringOutputFormatter());
             options.Value.OutputFormatters.Add(new JsonOutputFormatter(
                 new JsonSerializerSettings(),
                 ArrayPool<char>.Shared));
 
             var services = new ServiceCollection();
-            services.AddSingleton(new ObjectResultExecutor(
-                options,
+            services.AddSingleton<IActionResultExecutor<ObjectResult>>(new ObjectResultExecutor(
+                new DefaultOutputFormatterSelector(options, NullLoggerFactory.Instance),
                 new TestHttpResponseStreamWriterFactory(),
                 NullLoggerFactory.Instance));
 

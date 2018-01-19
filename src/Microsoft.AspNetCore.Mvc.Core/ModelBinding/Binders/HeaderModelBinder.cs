@@ -6,15 +6,45 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Internal;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
 {
     /// <summary>
     /// An <see cref="IModelBinder"/> which binds models from the request headers when a model
-    /// has the binding source <see cref="BindingSource.Header"/>/
+    /// has the binding source <see cref="BindingSource.Header"/>.
     /// </summary>
     public class HeaderModelBinder : IModelBinder
     {
+        private readonly ILogger _logger;
+
+        /// <summary>
+        /// <para>This constructor is obsolete and will be removed in a future version. The recommended alternative
+        /// is the overload that takes an <see cref="ILoggerFactory"/>.</para>
+        /// <para>Initializes a new instance of <see cref="HeaderModelBinder"/>.</para>
+        /// </summary>
+        [Obsolete("This constructor is obsolete and will be removed in a future version. The recommended alternative"
+            + " is the overload that takes an " + nameof(ILoggerFactory) + ".")]
+        public HeaderModelBinder()
+            : this(NullLoggerFactory.Instance)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="HeaderModelBinder"/>.
+        /// </summary>
+        /// <param name="loggerFactory">The <see cref="ILoggerFactory"/>.</param>
+        public HeaderModelBinder(ILoggerFactory loggerFactory)
+        {
+            if (loggerFactory == null)
+            {
+                throw new ArgumentNullException(nameof(loggerFactory));
+            }
+
+            _logger = loggerFactory.CreateLogger<HeaderModelBinder>();
+        }
+
         /// <inheritdoc />
         public Task BindModelAsync(ModelBindingContext bindingContext)
         {
@@ -27,6 +57,13 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
 
             // Property name can be null if the model metadata represents a type (rather than a property or parameter).
             var headerName = bindingContext.FieldName;
+
+            _logger.AttemptingToBindModel(bindingContext);
+
+            if (!request.Headers.ContainsKey(headerName))
+            {
+                _logger.FoundNoValueInRequest(bindingContext);
+            }
 
             object model;
             if (bindingContext.ModelType == typeof(string))
@@ -63,7 +100,8 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 bindingContext.Result = ModelBindingResult.Success(model);
             }
 
-            return TaskCache.CompletedTask;
+            _logger.DoneAttemptingToBindModel(bindingContext);
+            return Task.CompletedTask;
         }
 
         private static object GetCompatibleCollection(ModelBindingContext bindingContext, string[] values)
@@ -81,7 +119,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             }
 
             var collection = ModelBindingHelper.GetCompatibleCollection<string>(bindingContext, values.Length);
-            for (int i = 0; i < values.Length; i++)
+            for (var i = 0; i < values.Length; i++)
             {
                 collection.Add(values[i]);
             }

@@ -117,9 +117,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageActionDescriptorProvider_RouteTemplateCannotBeOverrideable" xml:space="preserve">
-    <value>The route for the page at '{0}' cannot start with / or ~/. Pages do not support overriding the file path of the page.</value>
-  </data>
   <data name="PropertyOfTypeCannotBeNull" xml:space="preserve">
     <value>The '{0}' property of '{1}' must not be null.</value>
   </data>
@@ -127,7 +124,7 @@
     <value>Page created by '{0}' must be an instance of '{1}'.</value>
   </data>
   <data name="PageViewResult_ContextIsInvalid" xml:space="preserve">
-    <value>Argument '{0}' is not the same instance used to create '{1}'.</value>
+    <value>The context used to execute '{0}' must be an instance of '{1}'. Returning a '{2}' from a controller is a not supported.</value>
   </data>
   <data name="ArgumentCannotBeNullOrEmpty" xml:space="preserve">
     <value>Value cannot be null or empty.</value>
@@ -138,7 +135,19 @@
   <data name="AmbiguousHandler" xml:space="preserve">
     <value>Multiple handlers matched. The following handlers matched route data and had all constraints satisfied:{0}{0}{1}</value>
   </data>
-  <data name="PathMustBeAnAppRelativePath" xml:space="preserve">
-    <value>Path must be an application relative path that starts with a forward slash '/'.</value>
+  <data name="PathMustBeRootRelativePath" xml:space="preserve">
+    <value>Path must be a root relative path that starts with a forward slash '/'.</value>
+  </data>
+  <data name="AsyncPageFilter_InvalidShortCircuit" xml:space="preserve">
+    <value>If an {0} provides a result value by setting the {1} property of {2} to a non-null value, then it cannot call the next filter by invoking {3}.</value>
+  </data>
+  <data name="InvalidPageType_WrongBase" xml:space="preserve">
+    <value>The type '{0}' is not a valid page. A page must inherit from '{1}'.</value>
+  </data>
+  <data name="InvalidPageType_NoModelProperty" xml:space="preserve">
+    <value>The type '{0}' is not a valid page. A page must define a public, non-static '{1}' property.</value>
+  </data>
+  <data name="InvalidValidPageName" xml:space="preserve">
+    <value>'{0}' is not a valid page name. A page name is path relative to the Razor Pages root directory that starts with a leading forward slash ('/') and does not contain the file extension e.g "/Users/Edit".</value>
   </data>
 </root>

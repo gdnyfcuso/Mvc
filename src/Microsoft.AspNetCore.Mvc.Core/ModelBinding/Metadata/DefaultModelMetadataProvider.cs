@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Options;
 
@@ -13,7 +14,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
     /// <summary>
     /// A default implementation of <see cref="IModelMetadataProvider"/> based on reflection.
     /// </summary>
-    public class DefaultModelMetadataProvider : IModelMetadataProvider
+    public class DefaultModelMetadataProvider : ModelMetadataProvider
     {
         private readonly TypeCache _typeCache = new TypeCache();
         private readonly Func<ModelMetadataIdentity, ModelMetadataCacheEntry> _cacheEntryFactory;
@@ -24,7 +25,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
         /// </summary>
         /// <param name="detailsProvider">The <see cref="ICompositeMetadataDetailsProvider"/>.</param>
         public DefaultModelMetadataProvider(ICompositeMetadataDetailsProvider detailsProvider)
-            : this(detailsProvider, new ModelBindingMessageProvider())
+            : this(detailsProvider, new DefaultModelBindingMessageProvider())
         {
         }
 
@@ -42,7 +43,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
 
         private DefaultModelMetadataProvider(
             ICompositeMetadataDetailsProvider detailsProvider,
-            ModelBindingMessageProvider modelBindingMessageProvider)
+            DefaultModelBindingMessageProvider modelBindingMessageProvider)
         {
             if (detailsProvider == null)
             {
@@ -62,13 +63,13 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
         protected ICompositeMetadataDetailsProvider DetailsProvider { get; }
 
         /// <summary>
-        /// Gets the <see cref="Metadata.ModelBindingMessageProvider"/>.
+        /// Gets the <see cref="Metadata.DefaultModelBindingMessageProvider"/>.
         /// </summary>
         /// <value>Same as <see cref="MvcOptions.ModelBindingMessageProvider"/> in all production scenarios.</value>
-        protected ModelBindingMessageProvider ModelBindingMessageProvider { get; }
+        protected DefaultModelBindingMessageProvider ModelBindingMessageProvider { get; }
 
         /// <inheritdoc />
-        public virtual IEnumerable<ModelMetadata> GetMetadataForProperties(Type modelType)
+        public override IEnumerable<ModelMetadata> GetMetadataForProperties(Type modelType)
         {
             if (modelType == null)
             {
@@ -97,8 +98,20 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
             return cacheEntry.Details.Properties;
         }
 
+        public override ModelMetadata GetMetadataForParameter(ParameterInfo parameter)
+        {
+            if (parameter == null)
+            {
+                throw new ArgumentNullException(nameof(parameter));
+            }
+
+            var cacheEntry = GetCacheEntry(parameter);
+
+            return cacheEntry.Metadata;
+        }
+
         /// <inheritdoc />
-        public virtual ModelMetadata GetMetadataForType(Type modelType)
+        public override ModelMetadata GetMetadataForType(Type modelType)
         {
             if (modelType == null)
             {
@@ -110,7 +123,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
             return cacheEntry.Metadata;
         }
 
-        private static ModelBindingMessageProvider GetMessageProvider(IOptions<MvcOptions> optionsAccessor)
+        private static DefaultModelBindingMessageProvider GetMessageProvider(IOptions<MvcOptions> optionsAccessor)
         {
             if (optionsAccessor == null)
             {
@@ -139,9 +152,25 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
             return cacheEntry;
         }
 
+        private ModelMetadataCacheEntry GetCacheEntry(ParameterInfo parameter)
+        {
+            return _typeCache.GetOrAdd(
+                ModelMetadataIdentity.ForParameter(parameter),
+                _cacheEntryFactory);
+        }
+
         private ModelMetadataCacheEntry CreateCacheEntry(ModelMetadataIdentity key)
         {
-            var details = CreateTypeDetails(key);
+            DefaultMetadataDetails details;
+            if (key.MetadataKind == ModelMetadataKind.Parameter)
+            {
+                details = CreateParameterDetails(key);
+            }
+            else
+            {
+                details = CreateTypeDetails(key);
+            }
+
             var metadata = CreateModelMetadata(details);
             return new ModelMetadataCacheEntry(metadata, details);
         }
@@ -232,15 +261,20 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
         /// </remarks>
         protected virtual DefaultMetadataDetails CreateTypeDetails(ModelMetadataIdentity key)
         {
-            return new DefaultMetadataDetails(key, ModelAttributes.GetAttributesForType(key.ModelType));
+            return new DefaultMetadataDetails(
+                key,
+                ModelAttributes.GetAttributesForType(key.ModelType));
+        }
+
+        protected virtual DefaultMetadataDetails CreateParameterDetails(ModelMetadataIdentity key)
+        {
+            return new DefaultMetadataDetails(
+                key,
+                ModelAttributes.GetAttributesForParameter(key.ParameterInfo));
         }
 
         private class TypeCache : ConcurrentDictionary<ModelMetadataIdentity, ModelMetadataCacheEntry>
         {
-            public TypeCache()
-                : base(ModelMetadataIdentityComparer.Instance)
-            {
-            }
         }
 
         private struct ModelMetadataCacheEntry
@@ -251,40 +285,9 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
                 Details = details;
             }
 
-            public ModelMetadata Metadata { get; private set; }
+            public ModelMetadata Metadata { get; }
 
-            public DefaultMetadataDetails Details { get; private set; }
-        }
-
-        private class ModelMetadataIdentityComparer : IEqualityComparer<ModelMetadataIdentity>
-        {
-            public static readonly ModelMetadataIdentityComparer Instance = new ModelMetadataIdentityComparer();
-
-            public bool Equals(ModelMetadataIdentity x, ModelMetadataIdentity y)
-            {
-                return
-                    x.ContainerType == y.ContainerType &&
-                    x.ModelType == y.ModelType &&
-                    x.Name == y.Name;
-            }
-
-            public int GetHashCode(ModelMetadataIdentity obj)
-            {
-                var hash = 17;
-                hash = hash * 23 + obj.ModelType.GetHashCode();
-
-                if (obj.ContainerType != null)
-                {
-                    hash = hash * 23 + obj.ContainerType.GetHashCode();
-                }
-
-                if (obj.Name != null)
-                {
-                    hash = hash * 23 + obj.Name.GetHashCode();
-                }
-
-                return hash;
-            }
+            public DefaultMetadataDetails Details { get; }
         }
     }
 }

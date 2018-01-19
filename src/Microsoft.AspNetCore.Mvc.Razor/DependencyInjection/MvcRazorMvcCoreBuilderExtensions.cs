@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
 using Microsoft.AspNetCore.Mvc.Razor.Extensions;
 using Microsoft.AspNetCore.Mvc.Razor.Internal;
+using Microsoft.AspNetCore.Mvc.Razor.TagHelpers;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.AspNetCore.Razor.TagHelpers;
@@ -51,10 +52,7 @@ namespace Microsoft.Extensions.DependencyInjection
             AddRazorViewEngineFeatureProviders(builder);
             AddRazorViewEngineServices(builder.Services);
 
-            if (setupAction != null)
-            {
-                builder.Services.Configure(setupAction);
-            }
+            builder.Services.Configure(setupAction);
 
             return builder;
         }
@@ -64,6 +62,11 @@ namespace Microsoft.Extensions.DependencyInjection
             if (!builder.PartManager.FeatureProviders.OfType<MetadataReferenceFeatureProvider>().Any())
             {
                 builder.PartManager.FeatureProviders.Add(new MetadataReferenceFeatureProvider());
+            }
+
+            if (!builder.PartManager.FeatureProviders.OfType<TagHelperFeatureProvider>().Any())
+            {
+                builder.PartManager.FeatureProviders.Add(new TagHelperFeatureProvider());
             }
 
             if (!builder.PartManager.FeatureProviders.OfType<ViewsFeatureProvider>().Any())
@@ -126,30 +129,20 @@ namespace Microsoft.Extensions.DependencyInjection
         internal static void AddRazorViewEngineServices(IServiceCollection services)
         {
             services.TryAddSingleton<CSharpCompiler>();
-            services.TryAddSingleton<RazorReferenceManager>();
-            // This caches compilation related details that are valid across the lifetime of the application.
-            services.TryAddSingleton<ICompilationService, DefaultRoslynCompilationService>();
+            services.TryAddSingleton<RazorReferenceManager, DefaultRazorReferenceManager>();
 
             services.TryAddEnumerable(
                 ServiceDescriptor.Transient<IConfigureOptions<MvcViewOptions>, MvcRazorMvcViewOptionsSetup>());
 
-            // DependencyContextRazorViewEngineOptionsSetup needs to run after RazorViewEngineOptionsSetup.
-            // The ordering of the following two lines is important to ensure this behavior.
             services.TryAddEnumerable(
                 ServiceDescriptor.Transient<IConfigureOptions<RazorViewEngineOptions>, RazorViewEngineOptionsSetup>());
-            services.TryAddEnumerable(
-                ServiceDescriptor.Transient<
-                    IConfigureOptions<RazorViewEngineOptions>,
-                    DependencyContextRazorViewEngineOptionsSetup>());
 
             services.TryAddSingleton<
                 IRazorViewEngineFileProviderAccessor,
                 DefaultRazorViewEngineFileProviderAccessor>();
 
             services.TryAddSingleton<IRazorViewEngine, RazorViewEngine>();
-
-            // Caches compilation artifacts across the lifetime of the application.
-            services.TryAddSingleton<ICompilerCacheProvider, DefaultCompilerCacheProvider>();
+            services.TryAddSingleton<IViewCompilerProvider, RazorViewCompilerProvider>();
 
             // In the default scenario the following services are singleton by virtue of being initialized as part of
             // creating the singleton RazorViewEngine instance.
@@ -158,21 +151,24 @@ namespace Microsoft.Extensions.DependencyInjection
             //
             // Razor compilation infrastructure
             //
-            services.TryAddSingleton<RazorProject, DefaultRazorProject>();
+            services.TryAddSingleton<RazorProject, FileProviderRazorProject>();
             services.TryAddSingleton<RazorTemplateEngine, MvcRazorTemplateEngine>();
-            services.TryAddSingleton<RazorCompiler>();
             services.TryAddSingleton<LazyMetadataReferenceFeature>();
 
-            services.TryAddSingleton<RazorEngine>(s =>
+            services.TryAddSingleton(s =>
             {
                 return RazorEngine.Create(b =>
                 {
                     RazorExtensions.Register(b);
 
-                    b.Features.Add(new Microsoft.CodeAnalysis.Razor.DefaultTagHelperFeature());
-
+                    // Roslyn + TagHelpers infrastructure
                     var metadataReferenceFeature = s.GetRequiredService<LazyMetadataReferenceFeature>();
                     b.Features.Add(metadataReferenceFeature);
+                    b.Features.Add(new Microsoft.CodeAnalysis.Razor.CompilationTagHelperFeature());
+
+                    // TagHelperDescriptorProviders (actually do tag helper discovery)
+                    b.Features.Add(new Microsoft.CodeAnalysis.Razor.DefaultTagHelperDescriptorProvider());
+                    b.Features.Add(new ViewComponentTagHelperDescriptorProvider());
                 });
             });
 
@@ -182,6 +178,9 @@ namespace Microsoft.Extensions.DependencyInjection
             // Only want one ITagHelperActivator so it can cache Type activation information. Types won't conflict.
             services.TryAddSingleton<ITagHelperActivator, DefaultTagHelperActivator>();
             services.TryAddSingleton<ITagHelperFactory, DefaultTagHelperFactory>();
+
+            // TagHelperComponents manager
+            services.TryAddScoped<ITagHelperComponentManager, TagHelperComponentManager>();
 
             // Consumed by the Cache tag helper to cache results across the lifetime of the application.
             services.TryAddSingleton<IMemoryCache, MemoryCache>();

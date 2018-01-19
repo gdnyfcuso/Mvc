@@ -20,13 +20,6 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
         private State _state;
         private readonly Stack<State> _stack = new Stack<State>();
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DefaultModelBindingContext"/> class.
-        /// </summary>
-        public DefaultModelBindingContext()
-        {
-        }
-
         /// <inheritdoc />
         public override ActionContext ActionContext
         {
@@ -279,7 +272,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
             var scope = EnterNestedScope();
 
             // Only filter if the new BindingSource affects the value providers. Otherwise we want
-            // to preserve the currrent state.
+            // to preserve the current state.
             if (modelMetadata.BindingSource != null && !modelMetadata.BindingSource.IsGreedy)
             {
                 ValueProvider = FilterValueProvider(OriginalValueProvider, modelMetadata.BindingSource);
@@ -303,7 +296,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
         {
             _stack.Push(_state);
 
-            Result = default(ModelBindingResult);
+            Result = default;
 
             return new NestedScope(this);
         }
@@ -345,6 +338,6 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
             public bool IsTopLevelObject;
 
             public ModelBindingResult Result;
-        };
+        }
     }
 }

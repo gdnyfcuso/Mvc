@@ -4,9 +4,9 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.AspNetCore.Mvc
@@ -22,7 +22,7 @@ namespace Microsoft.AspNetCore.Mvc
         public int? StatusCode { get; set; }
 
         /// <summary>
-        /// Gets or sets the name of the partial view to render.
+        /// Gets or sets the name or path of the partial view that is rendered to the response.
         /// </summary>
         /// <remarks>
         /// When <c>null</c>, defaults to <see cref="ControllerActionDescriptor.ActionName"/>.
@@ -57,7 +57,7 @@ namespace Microsoft.AspNetCore.Mvc
         public string ContentType { get; set; }
 
         /// <inheritdoc />
-        public override async Task ExecuteResultAsync(ActionContext context)
+        public override Task ExecuteResultAsync(ActionContext context)
         {
             if (context == null)
             {
@@ -65,16 +65,8 @@ namespace Microsoft.AspNetCore.Mvc
             }
 
             var services = context.HttpContext.RequestServices;
-            var executor = services.GetRequiredService<PartialViewResultExecutor>();
-
-            var result = executor.FindView(context, this);
-            result.EnsureSuccessful(originalLocations: null);
-
-            var view = result.View;
-            using (view as IDisposable)
-            {
-                await executor.ExecuteAsync(context, view, this);
-            }
+            var executor = services.GetRequiredService<IActionResultExecutor<PartialViewResult>>();
+            return executor.ExecuteAsync(context, this);
         }
     }
 }

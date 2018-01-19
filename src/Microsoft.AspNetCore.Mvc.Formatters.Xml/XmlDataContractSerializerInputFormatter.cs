@@ -4,14 +4,18 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
+using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.AspNetCore.Mvc.Formatters.Xml;
 using Microsoft.AspNetCore.Mvc.Formatters.Xml.Internal;
 using Microsoft.AspNetCore.Mvc.Internal;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace Microsoft.AspNetCore.Mvc.Formatters
 {
@@ -19,15 +23,18 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
     /// This class handles deserialization of input XML data
     /// to strongly-typed objects using <see cref="DataContractSerializer"/>.
     /// </summary>
-    public class XmlDataContractSerializerInputFormatter : TextInputFormatter
+    public class XmlDataContractSerializerInputFormatter : TextInputFormatter, IInputFormatterExceptionPolicy
     {
-        private DataContractSerializerSettings _serializerSettings;
-        private ConcurrentDictionary<Type, object> _serializerCache = new ConcurrentDictionary<Type, object>();
+        private readonly ConcurrentDictionary<Type, object> _serializerCache = new ConcurrentDictionary<Type, object>();
         private readonly XmlDictionaryReaderQuotas _readerQuotas = FormattingUtilities.GetDefaultXmlReaderQuotas();
+        private readonly bool _suppressInputFormatterBuffering;
+        private readonly MvcOptions _options;
+        private DataContractSerializerSettings _serializerSettings;
 
         /// <summary>
-        /// Initializes a new instance of DataContractSerializerInputFormatter
+        /// Initializes a new instance of <see cref="XmlDataContractSerializerInputFormatter"/>.
         /// </summary>
+        [Obsolete("This constructor is obsolete and will be removed in a future version.")]
         public XmlDataContractSerializerInputFormatter()
         {
             SupportedEncodings.Add(UTF8EncodingWithoutBOM);
@@ -41,6 +48,29 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
 
             WrapperProviderFactories = new List<IWrapperProviderFactory>();
             WrapperProviderFactories.Add(new SerializableErrorWrapperProviderFactory());
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="XmlDataContractSerializerInputFormatter"/>.
+        /// </summary>
+        /// <param name="suppressInputFormatterBuffering">Flag to buffer entire request body before deserializing it.</param>
+        [Obsolete("This constructor is obsolete and will be removed in a future version.")]
+        public XmlDataContractSerializerInputFormatter(bool suppressInputFormatterBuffering)
+            : this()
+        {
+            _suppressInputFormatterBuffering = suppressInputFormatterBuffering;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="XmlDataContractSerializerInputFormatter"/>.
+        /// </summary>
+        /// <param name="options">The <see cref="MvcOptions"/>.</param>
+        public XmlDataContractSerializerInputFormatter(MvcOptions options)
+#pragma warning disable CS0618
+            : this()
+#pragma warning restore CS0618
+        {
+            _options = options;
         }
 
         /// <summary>
@@ -62,10 +92,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
         /// The quotas include - DefaultMaxDepth, DefaultMaxStringContentLength, DefaultMaxArrayLength,
         /// DefaultMaxBytesPerRead, DefaultMaxNameTableCharCount
         /// </summary>
-        public XmlDictionaryReaderQuotas XmlDictionaryReaderQuotas
-        {
-            get { return _readerQuotas; }
-        }
+        public XmlDictionaryReaderQuotas XmlDictionaryReaderQuotas => _readerQuotas;
 
         /// <summary>
         /// Gets or sets the <see cref="DataContractSerializerSettings"/> used to configure the
@@ -73,7 +100,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
         /// </summary>
         public DataContractSerializerSettings SerializerSettings
         {
-            get { return _serializerSettings; }
+            get => _serializerSettings;
             set
             {
                 if (value == null)
@@ -86,7 +113,20 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
         }
 
         /// <inheritdoc />
-        public override Task<InputFormatterResult> ReadRequestBodyAsync(InputFormatterContext context, Encoding encoding)
+        public virtual InputFormatterExceptionPolicy ExceptionPolicy
+        {
+            get
+            {
+                if (GetType() == typeof(XmlDataContractSerializerInputFormatter))
+                {
+                    return InputFormatterExceptionPolicy.MalformedInputExceptions;
+                }
+                return InputFormatterExceptionPolicy.AllExceptions;
+            }
+        }
+
+        /// <inheritdoc />
+        public override async Task<InputFormatterResult> ReadRequestBodyAsync(InputFormatterContext context, Encoding encoding)
         {
             if (context == null)
             {
@@ -99,24 +139,44 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
             }
 
             var request = context.HttpContext.Request;
-            using (var xmlReader = CreateXmlReader(new NonDisposableStream(request.Body), encoding))
+
+            var suppressInputFormatterBuffering = _options?.SuppressInputFormatterBuffering ?? _suppressInputFormatterBuffering;
+
+            if (!request.Body.CanSeek && !suppressInputFormatterBuffering)
             {
-                var type = GetSerializableType(context.ModelType);
-                var serializer = GetCachedSerializer(type);
+                // XmlDataContractSerializer does synchronous reads. In order to avoid blocking on the stream, we asynchronously 
+                // read everything into a buffer, and then seek back to the beginning. 
+                BufferingHelper.EnableRewind(request);
+                Debug.Assert(request.Body.CanSeek);
 
-                var deserializedObject = serializer.ReadObject(xmlReader);
+                await request.Body.DrainAsync(CancellationToken.None);
+                request.Body.Seek(0L, SeekOrigin.Begin);
+            }
 
-                // Unwrap only if the original type was wrapped.
-                if (type != context.ModelType)
+            try
+            {
+                using (var xmlReader = CreateXmlReader(new NonDisposableStream(request.Body), encoding))
                 {
-                    var unwrappable = deserializedObject as IUnwrappable;
-                    if (unwrappable != null)
-                    {
-                        deserializedObject = unwrappable.Unwrap(declaredType: context.ModelType);
-                    }
-                }
+                    var type = GetSerializableType(context.ModelType);
+                    var serializer = GetCachedSerializer(type);
 
-                return InputFormatterResult.SuccessAsync(deserializedObject);
+                    var deserializedObject = serializer.ReadObject(xmlReader);
+
+                    // Unwrap only if the original type was wrapped.
+                    if (type != context.ModelType)
+                    {
+                        if (deserializedObject is IUnwrappable unwrappable)
+                        {
+                            deserializedObject = unwrappable.Unwrap(declaredType: context.ModelType);
+                        }
+                    }
+
+                    return InputFormatterResult.Success(deserializedObject);
+                }
+            }
+            catch (SerializationException exception)
+            {
+                throw new InputFormatterException(Resources.ErrorDeserializingInputData, exception);
             }
         }
 
@@ -206,8 +266,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
                 throw new ArgumentNullException(nameof(type));
             }
 
-            object serializer;
-            if (!_serializerCache.TryGetValue(type, out serializer))
+            if (!_serializerCache.TryGetValue(type, out var serializer))
             {
                 serializer = CreateSerializer(type);
                 if (serializer != null)

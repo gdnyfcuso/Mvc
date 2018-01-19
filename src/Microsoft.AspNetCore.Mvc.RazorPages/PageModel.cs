@@ -9,11 +9,11 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
@@ -22,13 +22,97 @@ using Microsoft.Net.Http.Headers;
 
 namespace Microsoft.AspNetCore.Mvc.RazorPages
 {
-    [PagesBaseClass]
-    public abstract class PageModel
+    [PageModel]
+    public abstract class PageModel : IAsyncPageFilter, IPageFilter
     {
-        private IObjectModelValidator _objectValidator;
         private IModelMetadataProvider _metadataProvider;
         private IModelBinderFactory _modelBinderFactory;
+        private IObjectModelValidator _objectValidator;
+        private ITempDataDictionary _tempData;
         private IUrlHelper _urlHelper;
+        private PageContext _pageContext;
+
+        /// <summary>
+        /// Gets the <see cref="RazorPages.PageContext"/>.
+        /// </summary>
+        [PageContext]
+        public PageContext PageContext
+        {
+            get
+            {
+                if (_pageContext == null)
+                {
+                    _pageContext = new PageContext();
+                }
+
+                return _pageContext;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                _pageContext = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets the <see cref="Http.HttpContext"/>.
+        /// </summary>
+        public HttpContext HttpContext => PageContext.HttpContext;
+
+        /// <summary>
+        /// Gets the <see cref="HttpRequest"/>.
+        /// </summary>
+        public HttpRequest Request => HttpContext?.Request;
+
+        /// <summary>
+        /// Gets the <see cref="HttpResponse"/>.
+        /// </summary>
+        public HttpResponse Response => HttpContext?.Response;
+
+        /// <summary>
+        /// Gets the <see cref="AspNetCore.Routing.RouteData"/> for the executing action.
+        /// </summary>
+        public RouteData RouteData => PageContext.RouteData;
+
+        /// <summary>
+        /// Gets the <see cref="ModelStateDictionary"/>.
+        /// </summary>
+        public ModelStateDictionary ModelState => PageContext.ModelState;
+
+        /// <summary>
+        /// Gets the <see cref="ClaimsPrincipal"/> for user associated with the executing action.
+        /// </summary>
+        public ClaimsPrincipal User => HttpContext?.User;
+
+        /// <summary>
+        /// Gets or sets <see cref="ITempDataDictionary"/> used by <see cref="PageResult"/>.
+        /// </summary>
+        public ITempDataDictionary TempData
+        {
+            get
+            {
+                if (_tempData == null)
+                {
+                    var factory = HttpContext?.RequestServices?.GetRequiredService<ITempDataDictionaryFactory>();
+                    _tempData = factory?.GetTempData(HttpContext);
+                }
+
+                return _tempData;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                _tempData = value;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the <see cref="IUrlHelper"/>.
@@ -57,51 +141,9 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         }
 
         /// <summary>
-        /// Gets the <see cref="RazorPages.PageContext"/>.
+        /// Gets or sets <see cref="ViewDataDictionary"/> used by <see cref="PageResult"/>.
         /// </summary>
-        [PageContext]
-        public PageContext PageContext { get; set; }
-
-        /// <summary>
-        /// Gets the <see cref="ViewContext"/>.
-        /// </summary>
-        public ViewContext ViewContext => PageContext;
-
-        /// <summary>
-        /// Gets the <see cref="Http.HttpContext"/>.
-        /// </summary>
-        public HttpContext HttpContext => PageContext?.HttpContext;
-
-        /// <summary>
-        /// Gets the <see cref="HttpRequest"/>.
-        /// </summary>
-        public HttpRequest Request => HttpContext?.Request;
-
-        /// <summary>
-        /// Gets the <see cref="HttpResponse"/>.
-        /// </summary>
-        public HttpResponse Response => HttpContext?.Response;
-
-        /// <summary>
-        /// Gets the <see cref="AspNetCore.Routing.RouteData"/> for the executing action.
-        /// </summary>
-        public RouteData RouteData => PageContext.RouteData;
-
-        /// <summary>
-        /// Gets the <see cref="ModelStateDictionary"/>.
-        /// </summary>
-        public ModelStateDictionary ModelState => PageContext.ModelState;
-
-        /// <summary>
-        /// Gets the <see cref="ClaimsPrincipal"/> for user associated with the executing action.
-        /// </summary>
-        public ClaimsPrincipal User => HttpContext?.User;
-
-        /// <summary>
-        /// Gets the <see cref="ITempDataDictionary"/> from the <see cref="PageContext"/>.
-        /// </summary>
-        /// <remarks>Returns null if <see cref="PageContext"/> is null.</remarks>
-        public ITempDataDictionary TempData => PageContext?.TempData;
+        public ViewDataDictionary ViewData => PageContext?.ViewData;
 
         private IObjectModelValidator ObjectValidator
         {
@@ -141,11 +183,6 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
                 return _modelBinderFactory;
             }
         }
-
-        /// <summary>
-        /// Gets the <see cref="ViewDataDictionary"/>.
-        /// </summary>
-        public ViewDataDictionary ViewData => PageContext?.ViewData;
 
         /// <summary>
         /// Updates the specified <paramref name="model"/> instance using values from the <see cref="PageModel"/>'s current
@@ -484,6 +521,39 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         }
 
         /// <summary>
+        /// Creates a <see cref="BadRequestResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+        /// </summary>
+        /// <returns>The created <see cref="BadRequestResult"/> for the response.</returns>
+        [NonAction]
+        public virtual BadRequestResult BadRequest()
+            => new BadRequestResult();
+
+        /// <summary>
+        /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+        /// </summary>
+        /// <param name="error">An error object to be returned to the client.</param>
+        /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
+        [NonAction]
+        public virtual BadRequestObjectResult BadRequest(object error)
+            => new BadRequestObjectResult(error);
+
+        /// <summary>
+        /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+        /// </summary>
+        /// <param name="modelState">The <see cref="ModelStateDictionary" /> containing errors to be returned to the client.</param>
+        /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
+        [NonAction]
+        public virtual BadRequestObjectResult BadRequest(ModelStateDictionary modelState)
+        {
+            if (modelState == null)
+            {
+                throw new ArgumentNullException(nameof(modelState));
+            }
+
+            return new BadRequestObjectResult(modelState);
+        }
+
+        /// <summary>
         /// Creates a <see cref="ChallengeResult"/>.
         /// </summary>
         /// <returns>The created <see cref="ChallengeResult"/> for the response.</returns>
@@ -523,7 +593,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
             => new ChallengeResult(properties);
 
         /// <summary>
-        /// Creates a <see cref="ChallengeResult"/> with the specified specified authentication schemes and
+        /// Creates a <see cref="ChallengeResult"/> with the specified authentication schemes and
         /// <paramref name="properties" />.
         /// </summary>
         /// <param name="properties"><see cref="AuthenticationProperties"/> used to perform the authentication
@@ -634,7 +704,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
 
         /// <summary>
         /// Creates a <see cref="ForbidResult"/> (<see cref="StatusCodes.Status403Forbidden"/> by default) with the 
-        /// specified specified authentication schemes and <paramref name="properties" />.
+        /// specified authentication schemes and <paramref name="properties" />.
         /// </summary>
         /// <param name="properties"><see cref="AuthenticationProperties"/> used to perform the authentication
         /// challenge.</param>
@@ -797,7 +867,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         /// Creates a <see cref="PageResult"/> object that renders the page.
         /// </summary>
         /// <returns>The <see cref="PageResult"/>.</returns>
-        public virtual PageResult Page() => new PageResult(PageContext.Page, this);
+        public virtual PageResult Page() => new PageResult();
 
         /// <summary>
         /// Returns the file specified by <paramref name="physicalPath" /> (<see cref="StatusCodes.Status200OK"/>) with the
@@ -1487,7 +1557,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
             => new SignInResult(authenticationScheme, principal);
 
         /// <summary>
-        /// Creates a <see cref="SignInResult"/> with the specified specified authentication scheme and
+        /// Creates a <see cref="SignInResult"/> with the specified authentication scheme and
         /// <paramref name="properties" />.
         /// </summary>
         /// <param name="principal">The <see cref="ClaimsPrincipal"/> containing the user claims.</param>
@@ -1509,7 +1579,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
             => new SignOutResult(authenticationSchemes);
 
         /// <summary>
-        /// Creates a <see cref="SignOutResult"/> with the specified specified authentication schemes and
+        /// Creates a <see cref="SignOutResult"/> with the specified authentication schemes and
         /// <paramref name="properties" />.
         /// </summary>
         /// <param name="properties"><see cref="AuthenticationProperties"/> used to perform the sign-out operation.</param>
@@ -1586,5 +1656,74 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
                 model: model);
             return ModelState.IsValid;
         }
+
+#region IAsyncPageFilter \ IPageFilter
+        /// <summary>
+        /// Called after a handler method has been selected, but before model binding occurs.
+        /// </summary>
+        /// <param name="context">The <see cref="PageHandlerSelectedContext"/>.</param>
+        public virtual void OnPageHandlerSelected(PageHandlerSelectedContext context)
+        {
+        }
+
+        /// <summary>
+        /// Called before the handler method executes, after model binding is complete.
+        /// </summary>
+        /// <param name="context">The <see cref="PageHandlerExecutingContext"/>.</param>
+        public virtual void OnPageHandlerExecuting(PageHandlerExecutingContext context)
+        {
+        }
+
+        /// <summary>
+        /// Called after the handler method executes, before the action method is invoked.
+        /// </summary>
+        /// <param name="context">The <see cref="PageHandlerExecutedContext"/>.</param>
+        public virtual void OnPageHandlerExecuted(PageHandlerExecutedContext context)
+        {
+        }
+
+        /// <summary>
+        /// Called asynchronously after the handler method has been selected, but before model binding occurs.
+        /// </summary>
+        /// <param name="context">The <see cref="PageHandlerSelectedContext"/>.</param>
+        /// <returns>A <see cref="Task"/> that on completion indicates the filter has executed.</returns>
+        public virtual Task OnPageHandlerSelectionAsync(PageHandlerSelectedContext context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            OnPageHandlerSelected(context);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Called asynchronously before the handler method is invoked, after model binding is complete.
+        /// </summary>
+        /// <param name="context">The <see cref="PageHandlerExecutingContext"/>.</param>
+        /// <param name="next">
+        /// The <see cref="PageHandlerExecutionDelegate"/>. Invoked to execute the next page filter or the handler method itself.
+        /// </param>
+        /// <returns>A <see cref="Task"/> that on completion indicates the filter has executed.</returns>
+        public virtual async Task OnPageHandlerExecutionAsync(PageHandlerExecutingContext context, PageHandlerExecutionDelegate next)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            if (next == null)
+            {
+                throw new ArgumentNullException(nameof(next));
+            }
+
+            OnPageHandlerExecuting(context);
+            if (context.Result == null)
+            {
+                OnPageHandlerExecuted(await next());
+            }
+        }
+#endregion
     }
 }

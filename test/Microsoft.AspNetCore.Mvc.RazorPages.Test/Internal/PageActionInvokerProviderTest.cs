@@ -2,10 +2,10 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -13,13 +13,15 @@ using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Mvc.Razor;
+using Microsoft.AspNetCore.Mvc.Razor.Compilation;
+using Microsoft.AspNetCore.Mvc.Razor.Internal;
 using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
 using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Primitives;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -27,6 +29,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 {
     public class PageInvokerProviderTest
     {
+        private readonly IHostingEnvironment _hostingEnvironment = Mock.Of<IHostingEnvironment>(e => e.ContentRootPath == "BasePath");
+
         [Fact]
         public void OnProvidersExecuting_WithEmptyModel_PopulatesCacheEntry()
         {
@@ -37,8 +41,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                 FilterDescriptors = new FilterDescriptor[0],
             };
 
-            Func<PageContext, object> factory = _ => null;
-            Action<PageContext, object> releaser = (_, __) => { };
+            Func<PageContext, ViewContext, object> factory = (a, b) => null;
+            Action<PageContext, ViewContext, object> releaser = (a, b, c) => { };
 
             var loader = new Mock<IPageLoader>();
             loader
@@ -77,6 +81,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             Assert.Same(releaser, entry.ReleasePage);
             Assert.Null(entry.ModelFactory);
             Assert.Null(entry.ReleaseModel);
+            Assert.NotNull(entry.ViewDataFactory);
         }
 
         [Fact]
@@ -89,8 +94,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                 FilterDescriptors = new FilterDescriptor[0],
             };
 
-            Func<PageContext, object> factory = _ => null;
-            Action<PageContext, object> releaser = (_, __) => { };
+            Func<PageContext, ViewContext, object> factory = (a, b) => null;
+            Action<PageContext, ViewContext, object> releaser = (a, b, c) => { };
             Func<PageContext, object> modelFactory = _ => null;
             Action<PageContext, object> modelDisposer = (_, __) => { };
 
@@ -133,7 +138,9 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             // Assert
             Assert.NotNull(context.Result);
+
             var actionInvoker = Assert.IsType<PageActionInvoker>(context.Result);
+
             var entry = actionInvoker.CacheEntry;
             var compiledPageActionDescriptor = Assert.IsType<CompiledPageActionDescriptor>(entry.ActionDescriptor);
             Assert.Equal(descriptor.RelativePath, compiledPageActionDescriptor.RelativePath);
@@ -141,6 +148,16 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             Assert.Same(releaser, entry.ReleasePage);
             Assert.Same(modelFactory, entry.ModelFactory);
             Assert.Same(modelDisposer, entry.ReleaseModel);
+            Assert.NotNull(entry.ViewDataFactory);
+
+            var pageContext = actionInvoker.PageContext;
+            Assert.Same(compiledPageActionDescriptor, pageContext.ActionDescriptor);
+            Assert.Same(context.ActionContext.HttpContext, pageContext.HttpContext);
+            Assert.Same(context.ActionContext.ModelState, pageContext.ModelState);
+            Assert.Same(context.ActionContext.RouteData, pageContext.RouteData);
+            Assert.Empty(pageContext.ValueProviderFactories);
+            Assert.NotNull(Assert.IsType<ViewDataDictionary<TestPageModel>>(pageContext.ViewData));
+            Assert.Empty(pageContext.ViewStartFactories);
         }
 
         [Fact]
@@ -166,16 +183,17 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             razorPageFactoryProvider
                 .Setup(f => f.CreateFactory("/Home/Path1/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(factory1, new IChangeToken[0]));
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), factory1));
             razorPageFactoryProvider
                 .Setup(f => f.CreateFactory("/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(factory2, new[] { Mock.Of<IChangeToken>() }));
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), factory2));
 
             var fileProvider = new TestFileProvider();
             fileProvider.AddFile("/Home/Path1/_ViewStart.cshtml", "content1");
             fileProvider.AddFile("/_ViewStart.cshtml", "content2");
+            var accessor = Mock.Of<IRazorViewEngineFileProviderAccessor>(a => a.FileProvider == fileProvider);
 
-            var defaultRazorProject = new TestRazorProject(fileProvider);
+            var defaultRazorProject = new FileProviderRazorProject(accessor, _hostingEnvironment);
 
             var invokerProvider = CreateInvokerProvider(
                 loader.Object,
@@ -200,7 +218,6 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             Assert.Equal(new[] { factory2, factory1 }, entry.ViewStartFactories);
         }
 
-
         [Fact]
         public void OnProvidersExecuting_CachesEntries()
         {
@@ -220,7 +237,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                 loader.Object,
                 CreateActionDescriptorCollection(descriptor));
 
-            var context = new ActionInvokerProviderContext(new ActionContext()
+            var context = new ActionInvokerProviderContext(new ActionContext
             {
                 ActionDescriptor = descriptor,
                 HttpContext = new DefaultHttpContext(),
@@ -236,6 +253,12 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var entry1 = actionInvoker.CacheEntry;
 
             // Act - 2
+            context = new ActionInvokerProviderContext(new ActionContext
+            {
+                ActionDescriptor = descriptor,
+                HttpContext = new DefaultHttpContext(),
+                RouteData = new RouteData(),
+            });
             invokerProvider.OnProvidersExecuting(context);
 
             // Assert - 2
@@ -301,66 +324,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
         [Fact]
         public void GetViewStartFactories_FindsFullHeirarchy()
         {
-            // Arrange
-            var descriptor = new PageActionDescriptor()
-            {
-                RelativePath = "/Views/Deeper/Index.cshtml",
-                FilterDescriptors = new FilterDescriptor[0],
-                ViewEnginePath = "/Views/Deeper/Index.cshtml"
-            };
 
-            var loader = new Mock<IPageLoader>();
-            loader
-                .Setup(l => l.Load(It.IsAny<PageActionDescriptor>()))
-                .Returns(CreateCompiledPageActionDescriptor(descriptor, typeof(TestPageModel)));
-
-            var fileProvider = new TestFileProvider();
-            fileProvider.AddFile("/View/Deeper/Not_ViewStart.cshtml", "page content");
-            fileProvider.AddFile("/View/Wrong/_ViewStart.cshtml", "page content");
-            fileProvider.AddFile("/_ViewStart.cshtml", "page content ");
-            fileProvider.AddFile("/Views/_ViewStart.cshtml", "@page starts!");
-            fileProvider.AddFile("/Views/Deeper/_ViewStart.cshtml", "page content");
-
-            var razorProject = new TestRazorProject(fileProvider);
-
-            var mock = new Mock<IRazorPageFactoryProvider>();
-            mock
-                .Setup(p => p.CreateFactory("/Views/Deeper/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new List<IChangeToken>()))
-                .Verifiable();
-            mock
-                .Setup(p => p.CreateFactory("/Views/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new List<IChangeToken>()))
-                .Verifiable();
-            mock
-                .Setup(p => p.CreateFactory("/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new List<IChangeToken>()))
-                .Verifiable();
-
-            var razorPageFactoryProvider = mock.Object;
-
-            var invokerProvider = CreateInvokerProvider(
-                loader.Object,
-                CreateActionDescriptorCollection(descriptor),
-                pageProvider: null,
-                modelProvider: null,
-                razorPageFactoryProvider: razorPageFactoryProvider,
-                razorProject: razorProject);
-
-            var compiledDescriptor = CreateCompiledPageActionDescriptor(descriptor);
-
-            // Act
-            var factories = invokerProvider.GetViewStartFactories(compiledDescriptor);
-
-            // Assert
-            mock.Verify();
-        }
-
-        [Theory]
-        [InlineData("/Pages/Level1/")]
-        [InlineData("/Pages/Level1")]
-        public void GetPageFactories_DoesNotFindViewStartsOutsideBaseDirectory(string rootDirectory)
-        {
             // Arrange
             var descriptor = new PageActionDescriptor()
             {
@@ -386,30 +350,33 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             fileProvider.AddFile("/Pages/Level1/Level2/_ViewStart.cshtml", "page content");
             fileProvider.AddFile("/Pages/Level1/Level3/_ViewStart.cshtml", "page content");
 
-            var razorProject = new TestRazorProject(fileProvider);
+            var razorProject = new TestRazorProject(fileProvider, _hostingEnvironment);
 
             var mock = new Mock<IRazorPageFactoryProvider>(MockBehavior.Strict);
             mock
                 .Setup(p => p.CreateFactory("/Pages/Level1/Level2/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new List<IChangeToken>()))
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), () => null))
                 .Verifiable();
             mock
                 .Setup(p => p.CreateFactory("/Pages/Level1/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new List<IChangeToken>()))
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), () => null))
                 .Verifiable();
-            var razorPageFactoryProvider = mock.Object;
+            mock
+                .Setup(p => p.CreateFactory("/Pages/_ViewStart.cshtml"))
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), () => null))
+                .Verifiable();
+            mock
+                .Setup(p => p.CreateFactory("/_ViewStart.cshtml"))
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), () => null))
+                .Verifiable();
 
-            var options = new RazorPagesOptions
-            {
-                RootDirectory = rootDirectory,
-            };
+            var razorPageFactoryProvider = mock.Object;
 
             var invokerProvider = CreateInvokerProvider(
                 loader.Object,
                 CreateActionDescriptorCollection(descriptor),
                 razorPageFactoryProvider: razorPageFactoryProvider,
-                razorProject: razorProject,
-                razorPagesOptions: options);
+                razorProject: razorProject);
 
             // Act
             var factories = invokerProvider.GetViewStartFactories(compiledPageDescriptor);
@@ -439,17 +406,17 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var pageFactory = new Mock<IRazorPageFactoryProvider>();
             pageFactory
                 .Setup(f => f.CreateFactory("/Views/Deeper/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new IChangeToken[0]));
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), () => null));
             pageFactory
                 .Setup(f => f.CreateFactory("/Views/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(new IChangeToken[0]));
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), razorPageFactory: null));
             pageFactory
                 .Setup(f => f.CreateFactory("/_ViewStart.cshtml"))
-                .Returns(new RazorPageFactoryResult(() => null, new IChangeToken[0]));
+                .Returns(new RazorPageFactoryResult(new CompiledViewDescriptor(), () => null));
 
             // No files
             var fileProvider = new TestFileProvider();
-            var razorProject = new TestRazorProject(fileProvider);
+            var razorProject = new TestRazorProject(fileProvider, _hostingEnvironment);
 
             var invokerProvider = CreateInvokerProvider(
                 loader.Object,
@@ -472,16 +439,21 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             PageActionDescriptor descriptor,
             Type pageType = null)
         {
+            pageType = pageType ?? typeof(object);
+            var pageTypeInfo = pageType.GetTypeInfo();
+
             TypeInfo modelTypeInfo = null;
             if (pageType != null)
             {
-                modelTypeInfo = pageType.GetTypeInfo().GetProperty("Model")?.PropertyType.GetTypeInfo();
+                modelTypeInfo = pageTypeInfo.GetProperty("Model")?.PropertyType.GetTypeInfo();
             }
 
             return new CompiledPageActionDescriptor(descriptor)
             {
-                ModelTypeInfo = modelTypeInfo,
-                PageTypeInfo = (pageType ?? typeof(object)).GetTypeInfo()
+                HandlerTypeInfo = modelTypeInfo ?? pageTypeInfo,
+                ModelTypeInfo = modelTypeInfo ?? pageTypeInfo,
+                PageTypeInfo = pageTypeInfo,
+                FilterDescriptors = Array.Empty<FilterDescriptor>(),
             };
         }
 
@@ -491,8 +463,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             IPageFactoryProvider pageProvider = null,
             IPageModelFactoryProvider modelProvider = null,
             IRazorPageFactoryProvider razorPageFactoryProvider = null,
-            RazorProject razorProject = null,
-            RazorPagesOptions razorPagesOptions = null)
+            RazorProject razorProject = null)
         {
             var tempDataFactory = new Mock<ITempDataDictionaryFactory>();
             tempDataFactory
@@ -508,7 +479,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var parameterBinder = new ParameterBinder(
                 modelMetadataProvider,
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             return new PageActionInvokerProvider(
                 loader,
@@ -520,9 +492,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                 parameterBinder,
                 modelMetadataProvider,
                 tempDataFactory.Object,
-                new TestOptionsManager<MvcOptions>(),
-                new TestOptionsManager<HtmlHelperOptions>(),
-                new TestOptionsManager<RazorPagesOptions>(razorPagesOptions ?? new RazorPagesOptions()),
+                Options.Create(new MvcOptions()),
+                Options.Create(new HtmlHelperOptions()),
                 Mock.Of<IPageHandlerMethodSelector>(),
                 razorProject,
                 new DiagnosticListener("Microsoft.AspNetCore"),

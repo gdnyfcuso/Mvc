@@ -58,7 +58,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             // or model binding), add a middleware at the end of the user provided pipeline which make sure to continue
             // this flow.
             // Example:
-            // middleware filter -> user-middleware1 -> user-middleware2 -> end-middleware -> resouce filters or model binding
+            // middleware filter -> user-middleware1 -> user-middleware2 -> end-middleware -> resource filters or model binding
             nestedAppBuilder.Run(async (httpContext) =>
             {
                 var feature = httpContext.Features.Get<IMiddlewareFilterFeature>();
@@ -71,13 +71,20 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 var resourceExecutionDelegate = feature.ResourceExecutionDelegate;
 
                 var resourceExecutedContext = await resourceExecutionDelegate();
-
-                // Ideally we want the experience of a middleware pipeline to behave the same as if it was registered,
-                // in Startup. In this scenario an exception thrown in a middelware later in the pipeline gets propagated
-                // back to earlier middleware.
-                // So check if a later resource filter threw an exception and propagate that back to the middleware pipeline.
-                if (!resourceExecutedContext.ExceptionHandled && resourceExecutedContext.Exception != null)
+                if (resourceExecutedContext.ExceptionHandled)
                 {
+                    return;
+                }
+
+                // Ideally we want the experience of a middleware pipeline to behave the same as if it was registered
+                // in Startup. In this scenario, an Exception thrown in a middelware later in the pipeline gets
+                // propagated back to earlier middleware. So, check if a later resource filter threw an Exception and
+                // propagate that back to the middleware pipeline.
+                resourceExecutedContext.ExceptionDispatchInfo?.Throw();
+                if (resourceExecutedContext.Exception != null)
+                {
+                    // This line is rarely reachable because ResourceInvoker captures thrown Exceptions using
+                    // ExceptionDispatchInfo. That said, filters could set only resourceExecutedContext.Exception.
                     throw resourceExecutedContext.Exception;
                 }
             });

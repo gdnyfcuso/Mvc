@@ -97,6 +97,23 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
 
+        [Fact] // This test covers the 2.0 behavior. JSON.Net error messages are not preserved.
+        public async Task JsonInputFormatter_SuppliedJsonDeserializationErrorMessage()
+        {
+            // Arrange
+            var content = new StringContent("{", Encoding.UTF8, "application/json");
+
+            // Act
+            var response = await Client.PostAsync("http://localhost/JsonFormatter/ReturnInput/", content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            // Assert
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+            // Update me in 3.0 xD
+            Assert.Equal("{\"\":[\"The input was not valid.\"]}", responseBody);
+        }
+
         [Theory]
         [InlineData("\"I'm a JSON string!\"")]
         [InlineData("true")]

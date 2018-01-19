@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Internal;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
@@ -15,12 +16,15 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
     {
         [Theory]
         [InlineData(typeof(TestController_OneTempDataProperty))]
+        [InlineData(typeof(TestController_ListOfString))]
+        [InlineData(typeof(TestController_OneNullableTempDataProperty))]
         [InlineData(typeof(TestController_TwoTempDataProperties))]
+        [InlineData(typeof(TestController_NullableNonPrimitiveTempDataProperty))]
         public void AddsTempDataPropertyFilter_ForTempDataAttributeProperties(Type type)
         {
             // Arrange
             var provider = new TempDataApplicationModelProvider();
-            var defaultProvider = new DefaultApplicationModelProvider(new TestOptionsManager<MvcOptions>());
+            var defaultProvider = new DefaultApplicationModelProvider(Options.Create(new MvcOptions()));
 
             var context = new ApplicationModelProviderContext(new[] { type.GetTypeInfo() });
             defaultProvider.OnProvidersExecuting(context);
@@ -38,7 +42,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
         {
             // Arrange
             var provider = new TempDataApplicationModelProvider();
-            var defaultProvider = new DefaultApplicationModelProvider(new TestOptionsManager<MvcOptions>());
+            var defaultProvider = new DefaultApplicationModelProvider(Options.Create(new MvcOptions()));
 
             var context = new ApplicationModelProviderContext(new[] { typeof(TestController_OneTempDataProperty).GetTypeInfo() });
             defaultProvider.OnProvidersExecuting(context);
@@ -57,28 +61,11 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
         }
 
         [Fact]
-        public void DoesNotInitializeFilterFactory_ThrowsInvalidOperationException_NonPrimitiveType()
-        {
-            // Arrange
-            var provider = new TempDataApplicationModelProvider();
-            var defaultProvider = new DefaultApplicationModelProvider(new TestOptionsManager<MvcOptions>());
-
-            var context = new ApplicationModelProviderContext(new[] { typeof(TestController_OneValid_OneInvalidProperty).GetTypeInfo() });
-            defaultProvider.OnProvidersExecuting(context);
-
-            // Act
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                provider.OnProvidersExecuting(context));
-
-            Assert.Equal($"The '{typeof(TestController_OneValid_OneInvalidProperty).FullName}.{nameof(TestController_OneValid_OneInvalidProperty.Test2)}' property with {nameof(TempDataAttribute)} is invalid. A property using {nameof(TempDataAttribute)} must be of primitive or string type.", exception.Message);
-        }
-
-        [Fact]
         public void ThrowsInvalidOperationException_PrivateSetter()
         {
             // Arrange
             var provider = new TempDataApplicationModelProvider();
-            var defaultProvider = new DefaultApplicationModelProvider(new TestOptionsManager<MvcOptions>());
+            var defaultProvider = new DefaultApplicationModelProvider(Options.Create(new MvcOptions()));
 
             var context = new ApplicationModelProviderContext(new[] { typeof(TestController_PrivateSet).GetTypeInfo() });
             defaultProvider.OnProvidersExecuting(context);
@@ -87,7 +74,11 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
             var exception = Assert.Throws<InvalidOperationException>(() =>
                 provider.OnProvidersExecuting(context));
 
-            Assert.Equal($"The '{typeof(TestController_PrivateSet).FullName}.{nameof(TestController_NonPrimitiveType.Test)}' property with {nameof(TempDataAttribute)} is invalid. A property using {nameof(TempDataAttribute)} must have a public getter and setter.", exception.Message);
+            Assert.Equal(
+                $"The '{typeof(TestController_PrivateSet).FullName}.{nameof(TestController_NonPrimitiveType.Test)}'"
+                + $" property with {nameof(TempDataAttribute)} is invalid. A property using {nameof(TempDataAttribute)}"
+                + " must have a public getter and setter.",
+                exception.Message);
         }
 
         [Fact]
@@ -95,7 +86,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
         {
             // Arrange
             var provider = new TempDataApplicationModelProvider();
-            var defaultProvider = new DefaultApplicationModelProvider(new TestOptionsManager<MvcOptions>());
+            var defaultProvider = new DefaultApplicationModelProvider(Options.Create(new MvcOptions()));
 
             var context = new ApplicationModelProviderContext(new[] { typeof(TestController_NonPrimitiveType).GetTypeInfo() });
             defaultProvider.OnProvidersExecuting(context);
@@ -104,7 +95,40 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
             var exception = Assert.Throws<InvalidOperationException>(() =>
                 provider.OnProvidersExecuting(context));
 
-            Assert.Equal($"The '{typeof(TestController_NonPrimitiveType).FullName}.{nameof(TestController_NonPrimitiveType.Test)}' property with {nameof(TempDataAttribute)} is invalid. A property using {nameof(TempDataAttribute)} must be of primitive or string type.", exception.Message);
+            Assert.Equal(
+                $"The '{typeof(TestController_NonPrimitiveType).FullName}.{nameof(TestController_NonPrimitiveType.Test)}'"
+                + $" property with {nameof(TempDataAttribute)} is invalid. The '{typeof(TempDataSerializer).FullName}'"
+                + $" cannot serialize an object of type '{typeof(Object).FullName}'.",
+                exception.Message);
+        }
+
+        [Fact]
+        public void ThrowsInvalidOperationException_NonStringDictionaryKey()
+        {
+            // Arrange
+            var provider = new TempDataApplicationModelProvider();
+            var defaultProvider = new DefaultApplicationModelProvider(Options.Create(new MvcOptions()));
+
+            var context = new ApplicationModelProviderContext(
+                new[] { typeof(TestController_NonStringDictionaryKey).GetTypeInfo() });
+            defaultProvider.OnProvidersExecuting(context);
+
+            // Act & Assert
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                provider.OnProvidersExecuting(context));
+
+            Assert.Equal(
+                $"The '{typeof(TestController_NonStringDictionaryKey).FullName}.{nameof(TestController_NonStringDictionaryKey.Test)}'"
+                + $" property with {nameof(TempDataAttribute)} is invalid. The '{typeof(TempDataSerializer).FullName}'"
+                + $" cannot serialize a dictionary with a key of type '{typeof(Object)}'. The key must be of type"
+                + $" '{typeof(string).FullName}'.",
+                exception.Message);
+        }
+
+        public class TestController_NullableNonPrimitiveTempDataProperty
+        {
+            [TempData]
+            public DateTime? DateTime { get; set; }
         }
 
         public class TestController_OneTempDataProperty
@@ -124,13 +148,18 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
             public int Test2 { get; set; }
         }
 
-        public class TestController_OneValid_OneInvalidProperty
+        public class TestController_OneNullableTempDataProperty
         {
-            [TempData]
-            public int Test { get; set; }
+            public string Test { get; set; }
 
             [TempData]
-            public IList<string> Test2 { get; set; }
+            public int? Test2 { get; set; }
+        }
+
+        public class TestController_ListOfString
+        {
+            [TempData]
+            public IList<string> Test { get; set; }
         }
 
         public class TestController_PrivateSet
@@ -143,6 +172,12 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
         {
             [TempData]
             public object Test { get; set; }
+        }
+
+        public class TestController_NonStringDictionaryKey
+        {
+            [TempData]
+            public IDictionary<object, object> Test { get; set; }
         }
     }
 }

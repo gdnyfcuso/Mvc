@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Html;
@@ -98,7 +97,11 @@ namespace Microsoft.AspNetCore.Mvc.ViewComponents
             var descriptor = _selector.SelectComponent(name);
             if (descriptor == null)
             {
-                throw new InvalidOperationException(Resources.FormatViewComponent_CannotFindComponent(name));
+                throw new InvalidOperationException(Resources.FormatViewComponent_CannotFindComponent(
+                    name,
+                    nameof(ViewComponentAttribute),
+                    ViewComponentConventions.ViewComponentSuffix,
+                    nameof(NonViewComponentAttribute)));
             }
 
             return InvokeCoreAsync(descriptor, arguments);
@@ -129,7 +132,10 @@ namespace Microsoft.AspNetCore.Mvc.ViewComponents
             }
 
             throw new InvalidOperationException(Resources.FormatViewComponent_CannotFindComponent(
-                componentType.FullName));
+                componentType.FullName,
+                nameof(ViewComponentAttribute),
+                ViewComponentConventions.ViewComponentSuffix,
+                nameof(NonViewComponentAttribute)));
         }
 
         // Internal for testing

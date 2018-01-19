@@ -18,7 +18,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <returns>
         /// A <see cref="Task"/> that on completion returns a new <see cref="IHtmlContent"/> instance containing
@@ -46,7 +46,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="viewData">A <see cref="ViewDataDictionary"/> to pass into the partial view.</param>
         /// <returns>
@@ -76,7 +76,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="model">A model to pass into the partial view.</param>
         /// <returns>
@@ -106,7 +106,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <returns>
         /// Returns a new <see cref="IHtmlContent"/> instance containing the created HTML.
@@ -115,20 +115,8 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// This method synchronously calls and blocks on
         /// <see cref="IHtmlHelper.PartialAsync(string, object, ViewDataDictionary)"/>
         /// </remarks>
-        public static IHtmlContent Partial(
-            this IHtmlHelper htmlHelper,
-            string partialViewName)
+        public static IHtmlContent Partial(this IHtmlHelper htmlHelper, string partialViewName)
         {
-            if (htmlHelper == null)
-            {
-                throw new ArgumentNullException(nameof(htmlHelper));
-            }
-
-            if (partialViewName == null)
-            {
-                throw new ArgumentNullException(nameof(partialViewName));
-            }
-
             return Partial(htmlHelper, partialViewName, htmlHelper.ViewData.Model, viewData: null);
         }
 
@@ -137,7 +125,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="viewData">A <see cref="ViewDataDictionary"/> to pass into the partial view.</param>
         /// <returns>
@@ -152,16 +140,6 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
             string partialViewName,
             ViewDataDictionary viewData)
         {
-            if (htmlHelper == null)
-            {
-                throw new ArgumentNullException(nameof(htmlHelper));
-            }
-
-            if (partialViewName == null)
-            {
-                throw new ArgumentNullException(nameof(partialViewName));
-            }
-
             return Partial(htmlHelper, partialViewName, htmlHelper.ViewData.Model, viewData);
         }
 
@@ -170,7 +148,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="model">A model to pass into the partial view.</param>
         /// <returns>
@@ -180,21 +158,8 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// This method synchronously calls and blocks on
         /// <see cref="IHtmlHelper.PartialAsync(string, object, ViewDataDictionary)"/>
         /// </remarks>
-        public static IHtmlContent Partial(
-            this IHtmlHelper htmlHelper,
-            string partialViewName,
-            object model)
+        public static IHtmlContent Partial(this IHtmlHelper htmlHelper, string partialViewName, object model)
         {
-            if (htmlHelper == null)
-            {
-                throw new ArgumentNullException(nameof(htmlHelper));
-            }
-
-            if (partialViewName == null)
-            {
-                throw new ArgumentNullException(nameof(partialViewName));
-            }
-
             return Partial(htmlHelper, partialViewName, model, viewData: null);
         }
 
@@ -203,7 +168,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="model">A model to pass into the partial view.</param>
         /// <param name="viewData">A <see cref="ViewDataDictionary"/> to pass into the partial view.</param>
@@ -239,27 +204,14 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <remarks>
         /// In this context, "renders" means the method writes its output using <see cref="ViewContext.Writer"/>.
         /// </remarks>
-        public static void RenderPartial(
-            this IHtmlHelper htmlHelper,
-            string partialViewName)
+        public static void RenderPartial(this IHtmlHelper htmlHelper, string partialViewName)
         {
-            if (htmlHelper == null)
-            {
-                throw new ArgumentNullException(nameof(htmlHelper));
-            }
-
-            if (partialViewName == null)
-            {
-                throw new ArgumentNullException(nameof(partialViewName));
-            }
-
-            var result = htmlHelper.RenderPartialAsync(partialViewName, htmlHelper.ViewData.Model, viewData: null);
-            result.GetAwaiter().GetResult();
+            RenderPartial(htmlHelper, partialViewName, htmlHelper.ViewData.Model, viewData: null);
         }
 
         /// <summary>
@@ -267,7 +219,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="viewData">A <see cref="ViewDataDictionary"/> to pass into the partial view.</param>
         /// <remarks>
@@ -276,6 +228,43 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         public static void RenderPartial(
             this IHtmlHelper htmlHelper,
             string partialViewName,
+            ViewDataDictionary viewData)
+        {
+            RenderPartial(htmlHelper, partialViewName, htmlHelper.ViewData.Model, viewData);
+        }
+
+        /// <summary>
+        /// Renders HTML markup for the specified partial view.
+        /// </summary>
+        /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
+        /// <param name="partialViewName">
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// </param>
+        /// <param name="model">A model to pass into the partial view.</param>
+        /// <remarks>
+        /// In this context, "renders" means the method writes its output using <see cref="ViewContext.Writer"/>.
+        /// </remarks>
+        public static void RenderPartial(this IHtmlHelper htmlHelper, string partialViewName, object model)
+        {
+            RenderPartial(htmlHelper, partialViewName, model, viewData: null);
+        }
+
+        /// <summary>
+        /// Renders HTML markup for the specified partial view.
+        /// </summary>
+        /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
+        /// <param name="partialViewName">
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// </param>
+        /// <param name="model">A model to pass into the partial view.</param>
+        /// <param name="viewData">A <see cref="ViewDataDictionary"/> to pass into the partial view.</param>
+        /// <remarks>
+        /// In this context, "renders" means the method writes its output using <see cref="ViewContext.Writer"/>.
+        /// </remarks>
+        public static void RenderPartial(
+            this IHtmlHelper htmlHelper,
+            string partialViewName,
+            object model,
             ViewDataDictionary viewData)
         {
             if (htmlHelper == null)
@@ -288,7 +277,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
                 throw new ArgumentNullException(nameof(partialViewName));
             }
 
-            var result = htmlHelper.RenderPartialAsync(partialViewName, htmlHelper.ViewData.Model, viewData);
+            var result = htmlHelper.RenderPartialAsync(partialViewName, model, viewData);
             result.GetAwaiter().GetResult();
         }
 
@@ -297,37 +286,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
-        /// </param>
-        /// <param name="model">A model to pass into the partial view.</param>
-        /// <remarks>
-        /// In this context, "renders" means the method writes its output using <see cref="ViewContext.Writer"/>.
-        /// </remarks>
-        public static void RenderPartial(
-            this IHtmlHelper htmlHelper,
-            string partialViewName,
-            object model)
-        {
-            if (htmlHelper == null)
-            {
-                throw new ArgumentNullException(nameof(htmlHelper));
-            }
-
-            if (partialViewName == null)
-            {
-                throw new ArgumentNullException(nameof(partialViewName));
-            }
-
-            var result = htmlHelper.RenderPartialAsync(partialViewName, model, viewData: null);
-            result.GetAwaiter().GetResult();
-        }
-
-        /// <summary>
-        /// Renders HTML markup for the specified partial view.
-        /// </summary>
-        /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
-        /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <returns>A <see cref="Task"/> that renders the created HTML when it executes.</returns>
         /// <remarks>
@@ -355,7 +314,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="viewData">A <see cref="ViewDataDictionary"/> to pass into the partial view.</param>
         /// <returns>A <see cref="Task"/> that renders the created HTML when it executes.</returns>
@@ -385,7 +344,7 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
         /// </summary>
         /// <param name="htmlHelper">The <see cref="IHtmlHelper"/> instance this method extends.</param>
         /// <param name="partialViewName">
-        /// The name of the partial view used to create the HTML markup. Must not be <c>null</c>.
+        /// The name or path of the partial view used to create the HTML markup. Must not be <c>null</c>.
         /// </param>
         /// <param name="model">A model to pass into the partial view.</param>
         /// <returns>A <see cref="Task"/> that renders the created HTML when it executes.</returns>

@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc.ViewEngines;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Moq;
 using Xunit;
@@ -298,9 +299,9 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
         }
 
         [Theory]
-        [InlineData(HttpResponseStreamWriter.DefaultBufferSize - 1)]
-        [InlineData(HttpResponseStreamWriter.DefaultBufferSize + 1)]
-        [InlineData(2 * HttpResponseStreamWriter.DefaultBufferSize + 4)]
+        [InlineData(TestHttpResponseStreamWriterFactory.DefaultBufferSize - 1)]
+        [InlineData(TestHttpResponseStreamWriterFactory.DefaultBufferSize + 1)]
+        [InlineData(2 * TestHttpResponseStreamWriterFactory.DefaultBufferSize + 4)]
         public async Task ExecuteAsync_AsynchronouslyFlushesToTheResponseStream_PriorToDispose(int writeLength)
         {
             // Arrange
@@ -310,7 +311,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
                 await v.Writer.WriteAsync(text);
             });
 
-            var expectedWriteCallCount = Math.Ceiling((double)writeLength / HttpResponseStreamWriter.DefaultBufferSize);
+            var expectedWriteCallCount = Math.Ceiling((double)writeLength / TestHttpResponseStreamWriterFactory.DefaultBufferSize);
 
             var context = new DefaultHttpContext();
             var stream = new Mock<Stream>();
@@ -360,7 +361,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             }
 
             return new ViewExecutor(
-                new TestOptionsManager<MvcViewOptions>(),
+                Options.Create(new MvcViewOptions()),
                 new TestHttpResponseStreamWriterFactory(),
                 new Mock<ICompositeViewEngine>(MockBehavior.Strict).Object,
                 new TempDataDictionaryFactory(new SessionStateTempDataProvider()),

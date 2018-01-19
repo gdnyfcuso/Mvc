@@ -3,12 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Binders;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Microsoft.AspNetCore.Mvc.IntegrationTests
@@ -58,7 +62,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             // Model
             Assert.NotNull(modelBindingResult.Model);
             var boundModel = Assert.IsType<Person3>(modelBindingResult.Model);
-            Assert.Equal(1, boundModel.Address.Count);
+            Assert.Single(boundModel.Address);
             Assert.Equal("SomeStreet", boundModel.Address[0].Street);
 
             // ModelState
@@ -153,7 +157,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(modelBindingResult.Model);
             var boundModel = Assert.IsType<Person4>(modelBindingResult.Model);
             Assert.NotNull(boundModel.Address);
-            Assert.Equal(1, boundModel.Address.Count());
+            Assert.Single(boundModel.Address);
             Assert.Equal("SomeStreet", boundModel.Address[0].Street);
 
             // ModelState
@@ -201,7 +205,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(boundModel.Address);
 
             // Arrays should not be updated.
-            Assert.Equal(0, boundModel.Address.Count());
+            Assert.Empty(boundModel.Address);
 
             // ModelState
             Assert.True(modelState.IsValid);
@@ -239,7 +243,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             // Model
             Assert.NotNull(modelBindingResult.Model);
             var boundModel = Assert.IsType<Person3>(modelBindingResult.Model);
-            Assert.Equal(1, boundModel.Address.Count);
+            Assert.Single(boundModel.Address);
             Assert.Equal("SomeStreet", boundModel.Address[0].Street);
 
             // ModelState
@@ -330,7 +334,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             // Model
             Assert.NotNull(modelBindingResult.Model);
             var boundModel = Assert.IsType<Person4>(modelBindingResult.Model);
-            Assert.Equal(1, boundModel.Address.Count());
+            Assert.Single(boundModel.Address);
             Assert.Equal("SomeStreet", boundModel.Address[0].Street);
 
             // ModelState
@@ -377,7 +381,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var boundModel = Assert.IsType<Person5>(modelBindingResult.Model);
 
             // Arrays should not be updated.
-            Assert.Equal(0, boundModel.Address.Count());
+            Assert.Empty(boundModel.Address);
 
             // ModelState
             Assert.True(modelState.IsValid);
@@ -489,6 +493,132 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.True(modelState.IsValid);
         }
 
+        [Fact]
+        public async Task ActionParameter_WithBindNever_DoesNotGetBound()
+        {
+            // Arrange
+            var parameterBinder = ModelBindingTestHelper.GetParameterBinder();
+            var parameter = new ParameterDescriptor()
+            {
+                Name = BindingAndValidationController.BindNeverParamInfo.Name,
+                ParameterType = typeof(int)
+            };
+
+            var testContext = ModelBindingTestHelper.GetTestContext(request =>
+            {
+                request.QueryString = QueryString.Create(parameter.Name, "123");
+            });
+
+            var modelState = testContext.ModelState;
+            var modelMetadataProvider = TestModelMetadataProvider.CreateDefaultProvider();
+            var modelMetadata = modelMetadataProvider
+                .GetMetadataForParameter(BindingAndValidationController.BindNeverParamInfo);
+
+            // Act
+            var modelBindingResult = await parameterBinder.BindModelAsync(
+                parameter,
+                testContext,
+                modelMetadataProvider,
+                modelMetadata);
+
+            // Assert
+            Assert.False(modelBindingResult.IsModelSet);
+            Assert.True(modelState.IsValid);
+        }
+
+        [Theory]
+        [InlineData(123, true)]
+        [InlineData(null, false)]
+        public async Task ActionParameter_EnforcesBindRequired(int? input, bool isValid)
+        {
+            // Arrange
+            var parameterBinder = ModelBindingTestHelper.GetParameterBinder();
+            var parameter = new ParameterDescriptor()
+            {
+                Name = BindingAndValidationController.BindRequiredParamInfo.Name,
+                ParameterType = typeof(int)
+            };
+
+            var testContext = ModelBindingTestHelper.GetTestContext(request =>
+            {
+                if (input.HasValue)
+                {
+                    request.QueryString = QueryString.Create(parameter.Name, input.Value.ToString());
+                }
+            });
+
+            var modelState = testContext.ModelState;
+            var modelMetadataProvider = TestModelMetadataProvider.CreateDefaultProvider();
+            var modelMetadata = modelMetadataProvider
+                .GetMetadataForParameter(BindingAndValidationController.BindRequiredParamInfo);
+
+            // Act
+            var modelBindingResult = await parameterBinder.BindModelAsync(
+                parameter,
+                testContext,
+                modelMetadataProvider,
+                modelMetadata);
+
+            // Assert
+            Assert.Equal(input.HasValue, modelBindingResult.IsModelSet);
+            Assert.Equal(isValid, modelState.IsValid);
+            if (isValid)
+            {
+                Assert.Equal(input.Value, Assert.IsType<int>(modelBindingResult.Model));
+            }
+        }
+
+        [Theory]
+        [InlineData("requiredAndStringLengthParam", null, false)]
+        [InlineData("requiredAndStringLengthParam", "", false)]
+        [InlineData("requiredAndStringLengthParam", "abc", true)]
+        [InlineData("requiredAndStringLengthParam", "abcTooLong", false)]
+        [InlineData("displayNameStringLengthParam", null, true)]
+        [InlineData("displayNameStringLengthParam", "", true)]
+        [InlineData("displayNameStringLengthParam", "abc", true)]
+        [InlineData("displayNameStringLengthParam", "abcTooLong", false, "My Display Name")]
+        public async Task ActionParameter_EnforcesDataAnnotationsAttributes(
+            string paramName, string input, bool isValid, string displayName = null)
+        {
+            // Arrange
+            var parameterBinder = ModelBindingTestHelper.GetParameterBinder();
+            var parameterInfo = BindingAndValidationController.GetParameterInfo(paramName);
+            var parameter = new ParameterDescriptor()
+            {
+                Name = parameterInfo.Name,
+                ParameterType = parameterInfo.ParameterType
+            };
+
+            var testContext = ModelBindingTestHelper.GetTestContext(request =>
+            {
+                if (input != null)
+                {
+                    request.QueryString = QueryString.Create(parameter.Name, input);
+                }
+            });
+
+            var modelState = testContext.ModelState;
+            var modelMetadataProvider = TestModelMetadataProvider.CreateDefaultProvider();
+            var modelMetadata = modelMetadataProvider
+                .GetMetadataForParameter(parameterInfo);
+
+            // Act
+            var modelBindingResult = await parameterBinder.BindModelAsync(
+                parameter,
+                testContext,
+                modelMetadataProvider,
+                modelMetadata);
+
+            // Assert
+            Assert.Equal(input != null, modelBindingResult.IsModelSet);
+            Assert.Equal(isValid, modelState.IsValid);
+            if (!isValid)
+            {
+                var message = modelState[paramName].Errors.Single().ErrorMessage;
+                Assert.Contains(displayName ?? parameter.Name, message);
+            }
+        }
+
         private struct PointStruct
         {
             public PointStruct(double x, double y)
@@ -531,6 +661,33 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             }
 
             public string Name { get; set; }
+        }
+
+        private class BindingAndValidationController
+        {
+            public void MyAction(
+                [BindNever] int bindNeverParam,
+                [BindRequired] int bindRequiredParam,
+                [Required, StringLength(3)] string requiredAndStringLengthParam,
+                [Display(Name = "My Display Name"), StringLength(3)] string displayNameStringLengthParam)
+            {
+            }
+
+            private static MethodInfo MyActionMethodInfo
+                => typeof(BindingAndValidationController).GetMethod(nameof(MyAction));
+
+            public static ParameterInfo BindNeverParamInfo
+                => MyActionMethodInfo.GetParameters()[0];
+
+            public static ParameterInfo BindRequiredParamInfo
+                => MyActionMethodInfo.GetParameters()[1];
+
+            public static ParameterInfo GetParameterInfo(string parameterName)
+            {
+                return MyActionMethodInfo
+                    .GetParameters()
+                    .Single(p => p.Name.Equals(parameterName, StringComparison.Ordinal));
+            }
         }
 
         private class CustomReadOnlyCollection<T> : ICollection<T>
@@ -597,11 +754,11 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
         }
 
         // By default the ComplexTypeModelBinder fails to construct models for types with no parameterless constructor,
-        // but a developer could change this behavior by overridng CreateModel
+        // but a developer could change this behavior by overriding CreateModel
         private class CustomComplexTypeModelBinder : ComplexTypeModelBinder
         {
             public CustomComplexTypeModelBinder(IDictionary<ModelMetadata, IModelBinder> propertyBinders)
-                : base(propertyBinders)
+                : base(propertyBinders, NullLoggerFactory.Instance)
             {
             }
 

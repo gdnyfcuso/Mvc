@@ -34,6 +34,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
             BinderModelName = other.BinderModelName;
             BinderType = other.BinderType;
             PropertyFilterProvider = other.PropertyFilterProvider;
+            RequestPredicate = other.RequestPredicate;
         }
 
         /// <summary>
@@ -55,6 +56,12 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
         /// Gets or sets the <see cref="ModelBinding.IPropertyFilterProvider"/>.
         /// </summary>
         public IPropertyFilterProvider PropertyFilterProvider { get; set; }
+
+        /// <summary>
+        /// Gets or sets a predicate which determines whether or not the model should be bound based on state
+        /// from the current request.
+        /// </summary>
+        public Func<ActionContext, bool> RequestPredicate { get; set; }
 
         /// <summary>
         /// Constructs a new instance of <see cref="BindingInfo"/> from the given <paramref name="attributes"/>.
@@ -113,6 +120,17 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
                 bindingInfo.PropertyFilterProvider = new CompositePropertyFilterProvider(propertyFilterProviders);
             }
 
+            // RequestPredicate
+            foreach (var requestPredicateProvider in attributes.OfType<IRequestPredicateProvider>())
+            {
+                isBindingInfoPresent = true;
+                if (requestPredicateProvider.RequestPredicate != null)
+                {
+                    bindingInfo.RequestPredicate = requestPredicateProvider.RequestPredicate;
+                    break;
+                }
+            }
+
             return isBindingInfoPresent ? bindingInfo : null;
         }
 
@@ -125,13 +143,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
                 _providers = providers;
             }
 
-            public Func<ModelMetadata, bool> PropertyFilter
-            {
-                get
-                {
-                    return CreatePropertyFilter();
-                }
-            }
+            public Func<ModelMetadata, bool> PropertyFilter => CreatePropertyFilter();
 
             private Func<ModelMetadata, bool> CreatePropertyFilter()
             {

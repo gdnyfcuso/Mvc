@@ -9,7 +9,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 using Moq;
 using Xunit;
 
@@ -21,16 +23,16 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
         public void SaveTempData_UsesCookieName_FromOptions()
         {
             // Arrange
-            var exepectedCookieName = "TestCookieName";
+            var expectedCookieName = "TestCookieName";
             var values = new Dictionary<string, object>();
             values.Add("int", 10);
 
             var tempDataProviderStore = new TempDataSerializer();
             var expectedDataToProtect = tempDataProviderStore.Serialize(values);
-            var expectedDataInCookie = Base64UrlTextEncoder.Encode(expectedDataToProtect);
+            var expectedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToProtect);
             var tempDataProvider = GetProvider(dataProtector: null, options: new CookieTempDataProviderOptions()
             {
-                CookieName = exepectedCookieName
+                Cookie = { Name = expectedCookieName }
             });
 
             var responseCookies = new MockResponseCookieCollection();
@@ -46,8 +48,8 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             tempDataProvider.SaveTempData(httpContext.Object, values);
 
             // Assert
-            Assert.Contains(responseCookies, (cookie) => cookie.Key == exepectedCookieName);
-            var cookieInfo = responseCookies[exepectedCookieName];
+            Assert.Contains(responseCookies, (cookie) => cookie.Key == expectedCookieName);
+            var cookieInfo = responseCookies[expectedCookieName];
             Assert.Equal(expectedDataInCookie, cookieInfo.Value);
             Assert.Equal("/", cookieInfo.Options.Path);
         }
@@ -67,6 +69,40 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
         }
 
         [Fact]
+        public void LoadTempData_ReturnsEmptyDictionary_AndClearsCookie_WhenDataIsInvalid()
+        {
+            // Arrange
+            var dataProtector = new Mock<IDataProtector>(MockBehavior.Strict);
+            dataProtector
+                .Setup(d => d.Unprotect(It.IsAny<byte[]>()))
+                .Throws(new Exception());
+
+            var tempDataProvider = GetProvider(dataProtector.Object);
+
+            var inputData = new Dictionary<string, object>();
+            inputData.Add("int", 10);
+            var tempDataProviderSerializer = new TempDataSerializer();
+            var expectedDataToUnprotect = tempDataProviderSerializer.Serialize(inputData);
+            var base64AndUrlEncodedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToUnprotect);
+
+            var context = new DefaultHttpContext();
+            context.Request.Cookies = new RequestCookieCollection(new Dictionary<string, string>()
+            {
+                { CookieTempDataProvider.CookieName, base64AndUrlEncodedDataInCookie }
+            });
+
+            // Act
+            var tempDataDictionary = tempDataProvider.LoadTempData(context);
+
+            // Assert
+            Assert.Empty(tempDataDictionary);
+
+            var setCookieHeader = SetCookieHeaderValue.Parse(context.Response.Headers["Set-Cookie"].ToString());
+            Assert.Equal(CookieTempDataProvider.CookieName, setCookieHeader.Name.ToString());
+            Assert.Equal(string.Empty, setCookieHeader.Value.ToString());
+        }
+
+        [Fact]
         public void LoadTempData_Base64UrlDecodesAnd_UnprotectsData_FromCookie()
         {
             // Arrange
@@ -74,7 +110,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             expectedValues.Add("int", 10);
             var tempDataProviderSerializer = new TempDataSerializer();
             var expectedDataToUnprotect = tempDataProviderSerializer.Serialize(expectedValues);
-            var base64AndUrlEncodedDataInCookie = Base64UrlTextEncoder.Encode(expectedDataToUnprotect);
+            var base64AndUrlEncodedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToUnprotect);
             var dataProtector = new PassThroughDataProtector();
             var tempDataProvider = GetProvider(dataProtector);
             var requestCookies = new RequestCookieCollection(new Dictionary<string, string>()
@@ -102,7 +138,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             values.Add("int", 10);
             var tempDataProviderStore = new TempDataSerializer();
             var expectedDataToProtect = tempDataProviderStore.Serialize(values);
-            var expectedDataInCookie = Base64UrlTextEncoder.Encode(expectedDataToProtect);
+            var expectedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToProtect);
             var dataProtector = new PassThroughDataProtector();
             var tempDataProvider = GetProvider(dataProtector);
             var responseCookies = new MockResponseCookieCollection();
@@ -126,18 +162,27 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
         }
 
         [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public void SaveTempData_SetsSecureAttributeOnCookie_OnlyIfRequestIsSecure(bool isSecure)
+        [InlineData(true, CookieSecurePolicy.None, false)]
+        [InlineData(false, CookieSecurePolicy.None, false)]
+        [InlineData(true, CookieSecurePolicy.Always, true)]
+        [InlineData(false, CookieSecurePolicy.Always, true)]
+        [InlineData(true, CookieSecurePolicy.SameAsRequest, true)]
+        [InlineData(false, CookieSecurePolicy.SameAsRequest, false)]
+        public void SaveTempData_HonorsCookieSecurePolicy_OnOptions(
+            bool isRequestSecure,
+            CookieSecurePolicy cookieSecurePolicy,
+            bool expectedSecureFlag)
         {
             // Arrange
             var values = new Dictionary<string, object>();
             values.Add("int", 10);
             var tempDataProviderStore = new TempDataSerializer();
             var expectedDataToProtect = tempDataProviderStore.Serialize(values);
-            var expectedDataInCookie = Base64UrlTextEncoder.Encode(expectedDataToProtect);
+            var expectedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToProtect);
             var dataProtector = new PassThroughDataProtector();
-            var tempDataProvider = GetProvider(dataProtector);
+            var options = new CookieTempDataProviderOptions();
+            options.Cookie.SecurePolicy = cookieSecurePolicy;
+            var tempDataProvider = GetProvider(dataProtector, options);
             var responseCookies = new MockResponseCookieCollection();
             var httpContext = new Mock<HttpContext>();
             httpContext
@@ -145,7 +190,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
                 .Returns("/");
             httpContext
                 .SetupGet(hc => hc.Request.IsHttps)
-                .Returns(isSecure);
+                .Returns(isRequestSecure);
             httpContext
                 .Setup(hc => hc.Response.Cookies)
                 .Returns(responseCookies);
@@ -160,7 +205,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             Assert.Equal(expectedDataInCookie, cookieInfo.Value);
             Assert.Equal(expectedDataToProtect, dataProtector.PlainTextToProtect);
             Assert.Equal("/", cookieInfo.Options.Path);
-            Assert.Equal(isSecure, cookieInfo.Options.Secure);
+            Assert.Equal(expectedSecureFlag, cookieInfo.Options.Secure);
             Assert.True(cookieInfo.Options.HttpOnly);
             Assert.Null(cookieInfo.Options.Expires);
             Assert.Null(cookieInfo.Options.Domain);
@@ -180,7 +225,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             values.Add("int", 10);
             var tempDataProviderStore = new TempDataSerializer();
             var expectedDataToProtect = tempDataProviderStore.Serialize(values);
-            var expectedDataInCookie = Base64UrlTextEncoder.Encode(expectedDataToProtect);
+            var expectedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToProtect);
             var dataProtector = new PassThroughDataProtector();
             var tempDataProvider = GetProvider(dataProtector);
             var responseCookies = new MockResponseCookieCollection();
@@ -219,18 +264,29 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
         [InlineData("/", "/vdir1", ".abc.com", "/vdir1", ".abc.com")]
         [InlineData("/vdir1", "/", ".abc.com", "/", ".abc.com")]
         public void SaveTempData_CustomProviderOptions_SetsCookie_WithAppropriateCookieOptions(
-            string requestPathBase, string optionsPath, string optionsDomain, string expectedCookiePath, string expectedDomain)
+            string requestPathBase,
+            string optionsPath,
+            string optionsDomain,
+            string expectedCookiePath,
+            string expectedDomain)
         {
             // Arrange
             var values = new Dictionary<string, object>();
             values.Add("int", 10);
             var tempDataProviderStore = new TempDataSerializer();
             var expectedDataToProtect = tempDataProviderStore.Serialize(values);
-            var expectedDataInCookie = Base64UrlTextEncoder.Encode(expectedDataToProtect);
+            var expectedDataInCookie = WebEncoders.Base64UrlEncode(expectedDataToProtect);
             var dataProtector = new PassThroughDataProtector();
             var tempDataProvider = GetProvider(
                 dataProtector,
-                new CookieTempDataProviderOptions() { Path = optionsPath, Domain = optionsDomain });
+                new CookieTempDataProviderOptions
+                {
+                    Cookie =
+                    {
+                        Path = optionsPath,
+                        Domain = optionsDomain
+                    }
+                });
             var responseCookies = new MockResponseCookieCollection();
             var httpContext = new Mock<HttpContext>();
             httpContext
@@ -267,7 +323,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             values.Add("int", 10);
             var tempDataProviderStore = new TempDataSerializer();
             var serializedData = tempDataProviderStore.Serialize(values);
-            var base64AndUrlEncodedData = Base64UrlTextEncoder.Encode(serializedData);
+            var base64AndUrlEncodedData = WebEncoders.Base64UrlEncode(serializedData);
             var dataProtector = new PassThroughDataProtector();
             var tempDataProvider = GetProvider(dataProtector);
             var requestCookies = new RequestCookieCollection(new Dictionary<string, string>()
@@ -630,7 +686,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
             var testOptions = new Mock<IOptions<CookieTempDataProviderOptions>>();
             testOptions.SetupGet(o => o.Value).Returns(options);
 
-            return new CookieTempDataProvider(new PassThroughDataProtectionProvider(dataProtector), testOptions.Object);
+            return new CookieTempDataProvider(new PassThroughDataProtectionProvider(dataProtector), NullLoggerFactory.Instance, testOptions.Object);
         }
 
         private class PassThroughDataProtectionProvider : IDataProtectionProvider

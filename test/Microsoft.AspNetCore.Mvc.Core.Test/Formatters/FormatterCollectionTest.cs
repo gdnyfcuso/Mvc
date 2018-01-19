@@ -11,6 +11,25 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
     public class FormatterCollectionTest
     {
         [Fact]
+        public void NonGenericRemoveType_RemovesAllOfType()
+        {
+            // Arrange
+            var collection = new FormatterCollection<IOutputFormatter>
+            {
+                new TestOutputFormatter(),
+                new AnotherTestOutputFormatter(),
+                new TestOutputFormatter()
+            };
+
+            // Act
+            collection.RemoveType(typeof(TestOutputFormatter));
+
+            // Assert
+            var formatter = Assert.Single(collection);
+            Assert.IsType<AnotherTestOutputFormatter>(formatter);
+        }
+
+        [Fact]
         public void RemoveType_RemovesAllOfType()
         {
             // Arrange
@@ -26,7 +45,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
 
             // Assert
             var formatter = Assert.Single(collection);
-            Assert.IsType(typeof(AnotherTestOutputFormatter), formatter);
+            Assert.IsType<AnotherTestOutputFormatter>(formatter);
         }
 
         private class TestOutputFormatter : TextOutputFormatter

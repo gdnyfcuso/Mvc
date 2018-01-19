@@ -6,12 +6,12 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
-using Microsoft.AspNetCore.Mvc.Internal;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Testing.xunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Net.Http.Headers;
 using Moq;
 using Xunit;
@@ -30,7 +30,8 @@ namespace Microsoft.AspNetCore.Mvc
             Assert.Equal("text/plain", result.ContentType.ToString());
         }
 
-        [Fact]
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
         public async Task ContentDispositionHeader_IsEncodedCorrectly()
         {
             // See comment in FileResult.cs detailing how the FileDownloadName should be encoded.
@@ -54,7 +55,8 @@ namespace Microsoft.AspNetCore.Mvc
             Assert.Equal(@"attachment; filename=""some\\file""; filename*=UTF-8''some%5Cfile", httpContext.Response.Headers["Content-Disposition"]);
         }
 
-        [Fact]
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
         public async Task ContentDispositionHeader_IsEncodedCorrectly_ForUnicodeCharacters()
         {
             // Arrange
@@ -76,7 +78,8 @@ namespace Microsoft.AspNetCore.Mvc
                 httpContext.Response.Headers["Content-Disposition"]);
         }
 
-        [Fact]
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
         public async Task ExecuteResultAsync_DoesNotSetContentDisposition_IfNotSpecified()
         {
             // Arrange
@@ -101,7 +104,8 @@ namespace Microsoft.AspNetCore.Mvc
             Assert.Equal(Stream.Null, httpContext.Response.Body);
         }
 
-        [Fact]
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
         public async Task ExecuteResultAsync_SetsContentDisposition_IfSpecified()
         {
             // Arrange
@@ -122,7 +126,8 @@ namespace Microsoft.AspNetCore.Mvc
             Assert.Equal("attachment; filename=filename.ext; filename*=UTF-8''filename.ext", httpContext.Response.Headers["Content-Disposition"]);
         }
 
-        [Fact]
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
         public async Task ExecuteResultAsync_ThrowsException_IfCannotResolveLoggerFactory()
         {
             // Arrange
@@ -133,27 +138,6 @@ namespace Microsoft.AspNetCore.Mvc
 
             // Act & Assert
             await Assert.ThrowsAsync<InvalidOperationException>(() => result.ExecuteResultAsync(actionContext));
-        }
-
-        [Fact]
-        public async Task ExecuteResultAsync_LogsInformation_IfCanResolveLoggerFactory()
-        {
-            // Arrange
-            var httpContext = new DefaultHttpContext();
-            var services = new ServiceCollection();
-            var loggerSink = new TestSink();
-            services.AddSingleton<ILoggerFactory>(new TestLoggerFactory(loggerSink, true));
-            services.AddSingleton<EmptyFileResultExecutor>();
-            httpContext.RequestServices = services.BuildServiceProvider();
-
-            var actionContext = CreateActionContext(httpContext);
-            var result = new EmptyFileResult("application/my-type");
-
-            // Act
-            await result.ExecuteResultAsync(actionContext);
-
-            // Assert
-            Assert.Equal(1, loggerSink.Writes.Count);
         }
 
         public static TheoryData<string, string> ContentDispositionData
@@ -250,6 +234,168 @@ namespace Microsoft.AspNetCore.Mvc
             Assert.Equal(expectedOutput, actual);
         }
 
+        [ConditionalFact]
+        [FrameworkSkipCondition(RuntimeFrameworks.CLR, SkipReason = "Fails due to dotnet/standard#567")]
+        public async Task SetsAcceptRangeHeader()
+        {
+            // Arrange
+            var httpContext = GetHttpContext();
+            var actionContext = CreateActionContext(httpContext);
+
+            var result = new EmptyFileResult("application/my-type");
+
+            // Act
+            await result.ExecuteResultAsync(actionContext);
+
+            // Assert
+            Assert.Equal("bytes", httpContext.Response.Headers[HeaderNames.AcceptRanges]);
+        }
+
+        [Theory]
+        [InlineData("\"Etag\"", "\"NotEtag\"", true, "\"Etag\"")]
+        [InlineData("\"Etag\"", "\"NotEtag\"", false, "\"Etag\"")]
+        [InlineData("\"Etag\"", null, false, null)]
+        [InlineData(null, "\"NotEtag\"", true, "\"Etag\"")]
+        [InlineData(null, "\"NotEtag\"", false, "\"Etag\"")]
+        public void GetPreconditionState_ShouldProcess(string ifMatch, string ifNoneMatch, bool isWeak, string ifRange)
+        {
+            // Arrange
+            var actionContext = new ActionContext();
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = HttpMethods.Get;
+            var httpRequestHeaders = httpContext.Request.GetTypedHeaders();
+            var lastModified = DateTimeOffset.MinValue;
+            lastModified = new DateTimeOffset(lastModified.Year, lastModified.Month, lastModified.Day, lastModified.Hour, lastModified.Minute, lastModified.Second, TimeSpan.FromSeconds(0));
+            var etag = new EntityTagHeaderValue("\"Etag\"");
+            httpRequestHeaders.IfMatch = ifMatch == null ? null : new[]
+            {
+                new EntityTagHeaderValue(ifMatch),
+            };
+
+            httpRequestHeaders.IfNoneMatch = ifNoneMatch == null ? null : new[]
+            {
+                new EntityTagHeaderValue(ifNoneMatch, isWeak),
+            };
+            httpRequestHeaders.IfRange = ifRange == null ? null : new RangeConditionHeaderValue(ifRange);
+            httpRequestHeaders.IfUnmodifiedSince = lastModified;
+            httpRequestHeaders.IfModifiedSince = DateTimeOffset.MinValue.AddDays(1);
+            actionContext.HttpContext = httpContext;
+            var fileResult = (new Mock<FileResultExecutorBase>(NullLogger.Instance)).Object;
+
+            // Act
+            var state = fileResult.GetPreconditionState(
+                httpRequestHeaders,
+                lastModified,
+                etag);
+
+            // Assert
+            Assert.Equal(FileResultExecutorBase.PreconditionState.ShouldProcess, state);
+        }
+
+        [Theory]
+        [InlineData("\"NotEtag\"", null, true)]
+        [InlineData("\"NotEtag\"", null, false)]
+        [InlineData("\"Etag\"", "\"Etag\"", true)]
+        [InlineData("\"Etag\"", "\"Etag\"", false)]
+        [InlineData(null, null, false)]
+        public void GetPreconditionState_ShouldNotProcess_PreconditionFailed(string ifMatch, string ifNoneMatch, bool isWeak)
+        {
+            // Arrange
+            var actionContext = new ActionContext();
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = HttpMethods.Delete;
+            var httpRequestHeaders = httpContext.Request.GetTypedHeaders();
+            var lastModified = DateTimeOffset.MinValue.AddDays(1);
+            var etag = new EntityTagHeaderValue("\"Etag\"");
+            httpRequestHeaders.IfMatch = ifMatch == null ? null : new[]
+            {
+                new EntityTagHeaderValue(ifMatch),
+            };
+
+            httpRequestHeaders.IfNoneMatch = ifNoneMatch == null ? null : new[]
+            {
+                new EntityTagHeaderValue(ifNoneMatch, isWeak),
+            };
+            httpRequestHeaders.IfUnmodifiedSince = DateTimeOffset.MinValue;
+            httpRequestHeaders.IfModifiedSince = DateTimeOffset.MinValue.AddDays(2);
+            actionContext.HttpContext = httpContext;
+            var fileResult = (new Mock<FileResultExecutorBase>(NullLogger.Instance)).Object;
+
+            // Act
+            var state = fileResult.GetPreconditionState(
+                httpRequestHeaders,
+                lastModified,
+                etag);
+
+            // Assert
+            Assert.Equal(FileResultExecutorBase.PreconditionState.PreconditionFailed, state);
+        }
+
+        [Theory]
+        [InlineData(null, "\"Etag\"", true)]
+        [InlineData(null, "\"Etag\"", false)]
+        [InlineData(null, null, false)]
+        public void GetPreconditionState_ShouldNotProcess_NotModified(string ifMatch, string ifNoneMatch, bool isWeak)
+        {
+            // Arrange
+            var actionContext = new ActionContext();
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = HttpMethods.Get;
+            var httpRequestHeaders = httpContext.Request.GetTypedHeaders();
+            var lastModified = DateTimeOffset.MinValue;
+            lastModified = new DateTimeOffset(lastModified.Year, lastModified.Month, lastModified.Day, lastModified.Hour, lastModified.Minute, lastModified.Second, TimeSpan.FromSeconds(0));
+            var etag = new EntityTagHeaderValue("\"Etag\"");
+            httpRequestHeaders.IfMatch = ifMatch == null ? null : new[]
+            {
+                new EntityTagHeaderValue(ifMatch),
+            };
+
+            httpRequestHeaders.IfNoneMatch = ifNoneMatch == null ? null : new[]
+            {
+                new EntityTagHeaderValue(ifNoneMatch, isWeak),
+            };
+            httpRequestHeaders.IfModifiedSince = lastModified;
+            actionContext.HttpContext = httpContext;
+            var fileResult = (new Mock<FileResultExecutorBase>(NullLogger.Instance)).Object;
+
+            // Act
+            var state = fileResult.GetPreconditionState(
+                httpRequestHeaders,
+                lastModified,
+                etag);
+
+            // Assert
+            Assert.Equal(FileResultExecutorBase.PreconditionState.NotModified, state);
+        }
+
+        [Theory]
+        [InlineData("\"NotEtag\"", false)]
+        [InlineData("\"Etag\"", true)]
+        public void IfRangeValid_IgnoreRangeRequest(string ifRangeString, bool expected)
+        {
+            // Arrange
+            var actionContext = new ActionContext();
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = HttpMethods.Get;
+            var httpRequestHeaders = httpContext.Request.GetTypedHeaders();
+            var lastModified = DateTimeOffset.MinValue;
+            lastModified = new DateTimeOffset(lastModified.Year, lastModified.Month, lastModified.Day, lastModified.Hour, lastModified.Minute, lastModified.Second, TimeSpan.FromSeconds(0));
+            var etag = new EntityTagHeaderValue("\"Etag\"");
+            httpRequestHeaders.IfRange = new RangeConditionHeaderValue(ifRangeString);
+            httpRequestHeaders.IfModifiedSince = lastModified;
+            actionContext.HttpContext = httpContext;
+            var fileResult = (new Mock<FileResultExecutorBase>(NullLogger.Instance)).Object;
+
+            // Act
+            var ifRangeIsValid = fileResult.IfRangeValid(
+                httpRequestHeaders,
+                lastModified,
+                etag);
+
+            // Assert
+            Assert.Equal(expected, ifRangeIsValid);
+        }
+
         private static IServiceCollection CreateServices()
         {
             var services = new ServiceCollection();
@@ -297,13 +443,13 @@ namespace Microsoft.AspNetCore.Mvc
         private class EmptyFileResultExecutor : FileResultExecutorBase
         {
             public EmptyFileResultExecutor(ILoggerFactory loggerFactory)
-                :base(CreateLogger<EmptyFileResultExecutor>(loggerFactory))
+                : base(CreateLogger<EmptyFileResultExecutor>(loggerFactory))
             {
             }
 
             public Task ExecuteAsync(ActionContext context, EmptyFileResult result)
             {
-                SetHeadersAndLog(context, result);
+                SetHeadersAndLog(context, result, 0L, true);
                 result.WasWriteFileCalled = true;
                 return Task.FromResult(0);
             }

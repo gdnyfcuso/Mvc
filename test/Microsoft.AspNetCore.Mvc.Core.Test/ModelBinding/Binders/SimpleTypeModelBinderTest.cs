@@ -5,6 +5,7 @@ using System;
 using System.Globalization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Testing;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
@@ -25,7 +26,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", value }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(string));
+            var binder = new SimpleTypeModelBinder(typeof(string), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -53,7 +54,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 .DisplayDetails(d => d.ConvertEmptyStringToNull = false);
             bindingContext.ModelMetadata = metadataProvider.GetMetadataForType(typeof(string));
 
-            var binder = new SimpleTypeModelBinder(typeof(string));
+            var binder = new SimpleTypeModelBinder(typeof(string), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -99,7 +100,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", "some-value" }
             };
 
-            var binder = new SimpleTypeModelBinder(destinationType);
+            var binder = new SimpleTypeModelBinder(destinationType, NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -109,13 +110,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
         }
 
         [Theory]
-        [InlineData(typeof(byte))]
-        [InlineData(typeof(short))]
-        [InlineData(typeof(int))]
-        [InlineData(typeof(long))]
-        [InlineData(typeof(Guid))]
-        [InlineData(typeof(double))]
-        [InlineData(typeof(DayOfWeek))]
+        [MemberData(nameof(ConvertableTypeData))]
         public async Task BindModel_CreatesError_WhenTypeConversionIsNull(Type destinationType)
         {
             // Arrange
@@ -124,7 +119,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             {
                 { "theModelName", string.Empty }
             };
-            var binder = new SimpleTypeModelBinder(destinationType);
+            var binder = new SimpleTypeModelBinder(destinationType, NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -142,14 +137,14 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
         public async Task BindModel_Error_FormatExceptionsTurnedIntoStringsInModelState()
         {
             // Arrange
-            var message = "The value 'not an integer' is not valid for Int32.";
+            var message = "The value 'not an integer' is not valid.";
             var bindingContext = GetBindingContext(typeof(int));
             bindingContext.ValueProvider = new SimpleValueProvider
             {
                 { "theModelName", "not an integer" }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(int));
+            var binder = new SimpleTypeModelBinder(typeof(int), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -167,7 +162,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
         {
             // Arrange
             var bindingContext = GetBindingContext(typeof(int));
-            var binder = new SimpleTypeModelBinder(typeof(int));
+            var binder = new SimpleTypeModelBinder(typeof(int), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -189,7 +184,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", value }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(string));
+            var binder = new SimpleTypeModelBinder(typeof(string), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -209,7 +204,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", "12" }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(int?));
+            var binder = new SimpleTypeModelBinder(typeof(int?), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -230,7 +225,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", "12.5" }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(double?));
+            var binder = new SimpleTypeModelBinder(typeof(double?), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -251,7 +246,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", "42" }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(int));
+            var binder = new SimpleTypeModelBinder(typeof(int), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -260,6 +255,55 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             Assert.True(bindingContext.Result.IsModelSet);
             Assert.Equal(42, bindingContext.Result.Model);
             Assert.True(bindingContext.ModelState.ContainsKey("theModelName"));
+        }
+
+        public static TheoryData<Type> BiggerNumericTypes
+        {
+            get
+            {
+                // Data set does not include bool, byte, sbyte, or char because they do not need thousands separators.
+                return new TheoryData<Type>
+                {
+                    typeof(decimal),
+                    typeof(double),
+                    typeof(float),
+                    typeof(int),
+                    typeof(long),
+                    typeof(short),
+                    typeof(uint),
+                    typeof(ulong),
+                    typeof(ushort),
+                };
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(BiggerNumericTypes))]
+        public async Task BindModel_ThousandsSeparators_LeadToErrors(Type type)
+        {
+            // Arrange
+            var bindingContext = GetBindingContext(type);
+            bindingContext.ValueProvider = new SimpleValueProvider(new CultureInfo("en-GB"))
+            {
+                { "theModelName", "32,000" }
+            };
+
+            var binder = new SimpleTypeModelBinder(type, NullLoggerFactory.Instance);
+
+            // Act
+            await binder.BindModelAsync(bindingContext);
+
+            // Assert
+            Assert.False(bindingContext.Result.IsModelSet);
+
+            var entry = Assert.Single(bindingContext.ModelState);
+            Assert.Equal("theModelName", entry.Key);
+            Assert.Equal("32,000", entry.Value.AttemptedValue);
+            Assert.Equal(ModelValidationState.Invalid, entry.Value.ValidationState);
+
+            var error = Assert.Single(entry.Value.Errors);
+            Assert.Equal("The value '32,000' is not valid.", error.ErrorMessage);
+            Assert.Null(error.Exception);
         }
 
         [Fact]
@@ -272,7 +316,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", "12,5" }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(decimal));
+            var binder = new SimpleTypeModelBinder(typeof(decimal), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -293,7 +337,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", "12,5" }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(decimal));
+            var binder = new SimpleTypeModelBinder(typeof(decimal), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -303,7 +347,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             Assert.Null(bindingContext.Result.Model);
 
             var error = Assert.Single(bindingContext.ModelState["theModelName"].Errors);
-            Assert.Equal("The value '12,5' is not valid for Decimal.", error.ErrorMessage, StringComparer.Ordinal);
+            Assert.Equal("The value '12,5' is not valid.", error.ErrorMessage, StringComparer.Ordinal);
             Assert.Null(error.Exception);
         }
 
@@ -317,7 +361,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", new object[] { "Value1" } }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(IntEnum));
+            var binder = new SimpleTypeModelBinder(typeof(IntEnum), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -338,7 +382,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", new object[] { "1" } }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(IntEnum));
+            var binder = new SimpleTypeModelBinder(typeof(IntEnum), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -349,11 +393,49 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             Assert.Equal(IntEnum.Value1, boundModel);
         }
 
+        public static TheoryData<string, int> EnumValues
+        {
+            get
+            {
+                return new TheoryData<string, int>
+                {
+                    { "0", 0 },
+                    { "1", 1 },
+                    { "13", 13 },
+                    { "Value1", 1 },
+                    { "Value1, Value2", 3 },
+                    // These two values look like big integers but are treated as two separate enum values that are
+                    // or'd together.
+                    { "32,015", 47 },
+                    { "32,128", 160 },
+                };
+            }
+        }
+
         [Theory]
-        [InlineData("0", 0)]
-        [InlineData("1", 1)]
-        [InlineData("13", 13)]
-        [InlineData("Value1", 1)]
+        [MemberData(nameof(EnumValues))]
+        public async Task BindModel_BindsIntEnumModels(string flagsEnumValue, int expected)
+        {
+            // Arrange
+            var bindingContext = GetBindingContext(typeof(IntEnum));
+            bindingContext.ValueProvider = new SimpleValueProvider
+            {
+                { "theModelName", flagsEnumValue }
+            };
+
+            var binder = new SimpleTypeModelBinder(typeof(IntEnum), NullLoggerFactory.Instance);
+
+            // Act
+            await binder.BindModelAsync(bindingContext);
+
+            // Assert
+            Assert.True(bindingContext.Result.IsModelSet);
+            var boundModel = Assert.IsType<IntEnum>(bindingContext.Result.Model);
+            Assert.Equal((IntEnum)expected, boundModel);
+        }
+
+        [Theory]
+        [MemberData(nameof(EnumValues))]
         [InlineData("Value8, Value4", 12)]
         public async Task BindModel_BindsFlagsEnumModels(string flagsEnumValue, int expected)
         {
@@ -364,7 +446,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 { "theModelName", flagsEnumValue }
             };
 
-            var binder = new SimpleTypeModelBinder(typeof(FlagsEnum));
+            var binder = new SimpleTypeModelBinder(typeof(FlagsEnum), NullLoggerFactory.Instance);
 
             // Act
             await binder.BindModelAsync(bindingContext);
@@ -396,13 +478,14 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
             Value1 = 1,
             Value2 = 2,
             Value4 = 4,
-            Value8 = 8
+            Value8 = 8,
         }
 
         private enum IntEnum
         {
             Value0 = 0,
             Value1 = 1,
+            Value2 = 2,
             MaxValue = int.MaxValue
         }
     }

@@ -3,12 +3,12 @@
 
 using System;
 using System.Buffers;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
@@ -19,7 +19,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
     public class MvcJsonMvcOptionsSetup : IConfigureOptions<MvcOptions>
     {
         private readonly ILoggerFactory _loggerFactory;
-        private readonly JsonSerializerSettings _jsonSerializerSettings;
+        private readonly MvcJsonOptions _jsonOptions;
         private readonly ArrayPool<char> _charPool;
         private readonly ObjectPoolProvider _objectPoolProvider;
 
@@ -50,14 +50,14 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
             }
 
             _loggerFactory = loggerFactory;
-            _jsonSerializerSettings = jsonOptions.Value.SerializerSettings;
+            _jsonOptions = jsonOptions.Value;
             _charPool = charPool;
             _objectPoolProvider = objectPoolProvider;
         }
 
         public void Configure(MvcOptions options)
         {
-            options.OutputFormatters.Add(new JsonOutputFormatter(_jsonSerializerSettings, _charPool));
+            options.OutputFormatters.Add(new JsonOutputFormatter(_jsonOptions.SerializerSettings, _charPool));
 
             // Register JsonPatchInputFormatter before JsonInputFormatter, otherwise
             // JsonInputFormatter would consume "application/json-patch+json" requests
@@ -65,19 +65,24 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
             var jsonInputPatchLogger = _loggerFactory.CreateLogger<JsonPatchInputFormatter>();
             options.InputFormatters.Add(new JsonPatchInputFormatter(
                 jsonInputPatchLogger,
-                _jsonSerializerSettings,
+                _jsonOptions.SerializerSettings,
                 _charPool,
-                _objectPoolProvider));
+                _objectPoolProvider,
+                options,
+                _jsonOptions));
 
             var jsonInputLogger = _loggerFactory.CreateLogger<JsonInputFormatter>();
             options.InputFormatters.Add(new JsonInputFormatter(
                 jsonInputLogger,
-                _jsonSerializerSettings,
+                _jsonOptions.SerializerSettings,
                 _charPool,
-                _objectPoolProvider));
+                _objectPoolProvider,
+                options,
+                _jsonOptions));
 
-            options.FormatterMappings.SetMediaTypeMappingForFormat("json", MediaTypeHeaderValue.Parse("application/json"));
+            options.FormatterMappings.SetMediaTypeMappingForFormat("json", MediaTypeHeaderValues.ApplicationJson);
 
+            options.ModelMetadataDetailsProviders.Add(new SuppressChildValidationMetadataProvider(typeof(IJsonPatchDocument)));
             options.ModelMetadataDetailsProviders.Add(new SuppressChildValidationMetadataProvider(typeof(JToken)));
         }
     }

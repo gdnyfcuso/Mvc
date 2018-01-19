@@ -1,6 +1,8 @@
 ASP.NET Core MVC
 ===
 
+**Note: For ASP.NET MVC 5.x, Web API 2.x, and Web Pages 3.x (not ASP.NET Core), please go to https://github.com/aspnet/AspNetWebStack**
+
 AppVeyor: [![AppVeyor](https://ci.appveyor.com/api/projects/status/969jbosi0qwc1awg/branch/dev?svg=true)](https://ci.appveyor.com/project/aspnetci/mvc/branch/dev)
 
 Travis:   [![Travis](https://travis-ci.org/aspnet/Mvc.svg?branch=dev)](https://travis-ci.org/aspnet/Mvc)
@@ -18,3 +20,7 @@ Related community projects:
 * [AspNetCoreImageTagHelper](https://github.com/ignatandrei/AspNetCoreImageTagHelper): Tag helper for rendering images as inline base64 data.
 
 This project is part of ASP.NET Core. You can find samples, documentation and getting started instructions for ASP.NET Core at the [Home](https://github.com/aspnet/home) repo.
+
+## Building from source
+
+To run a complete build on command line only, execute `build.cmd` or `build.sh` without arguments. See [developer documentation](https://github.com/aspnet/Home/wiki) for more details.

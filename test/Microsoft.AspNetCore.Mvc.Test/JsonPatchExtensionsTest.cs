@@ -65,7 +65,7 @@ namespace Microsoft.AspNetCore.Mvc
         }
 
         [Theory]
-        [InlineData("test", "/CustomerName", null, "James", "The test operation is not supported.")]
+        [InlineData("test", "/CustomerName", null, "James", "The current value '' at path 'CustomerName' is not equal to the test value 'James'.")]
         [InlineData("invalid", "/CustomerName", null, "James", "Invalid JsonPatch operation 'invalid'.")]
         [InlineData("", "/CustomerName", null, "James", "Invalid JsonPatch operation ''.")]
         public void ApplyTo_InvalidPatchOperations_AddsModelStateError(
@@ -87,7 +87,7 @@ namespace Microsoft.AspNetCore.Mvc
             // Assert
             Assert.Equal(1, modelState.ErrorCount);
             Assert.Equal(nameof(Customer), modelState.First().Key);
-            Assert.Equal(1, modelState.First().Value.Errors.Count);
+            Assert.Single(modelState.First().Value.Errors);
             Assert.Equal(error, modelState.First().Value.Errors.First().ErrorMessage);
         }
 

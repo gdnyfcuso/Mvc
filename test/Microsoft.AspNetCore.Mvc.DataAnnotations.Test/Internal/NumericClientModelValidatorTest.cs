@@ -45,14 +45,43 @@ namespace Microsoft.AspNetCore.Mvc.DataAnnotations.Internal
             var provider = new TestModelMetadataProvider();
             provider
                 .ForProperty(typeof(TypeWithNumericProperty), nameof(TypeWithNumericProperty.Id))
-                .BindingDetails(d => d.ModelBindingMessageProvider.ValueMustBeANumberAccessor =
-                    name => $"Error message about '{ name }' from override.");
+                .BindingDetails(d =>
+                {
+                    d.ModelBindingMessageProvider.SetValueMustBeANumberAccessor(
+                        name => $"Error message about '{ name }' from override.");
+                });
             var metadata = provider.GetMetadataForProperty(
                 typeof(TypeWithNumericProperty),
                 nameof(TypeWithNumericProperty.Id));
 
             var adapter = new NumericClientModelValidator();
 
+            var actionContext = new ActionContext();
+            var context = new ClientModelValidationContext(actionContext, metadata, provider, new AttributeDictionary());
+
+            // Act
+            adapter.AddValidation(context);
+
+            // Assert
+            Assert.Collection(
+                context.Attributes,
+                kvp => { Assert.Equal("data-val", kvp.Key); Assert.Equal("true", kvp.Value); },
+                kvp => { Assert.Equal("data-val-number", kvp.Key); Assert.Equal(expectedMessage, kvp.Value); });
+        }
+
+        [Fact]
+        public void AddValidation_CorrectValidationTypeAndOverriddenErrorMessage_WithNonProperty()
+        {
+            // Arrange
+            var expectedMessage = "Error message from override.";
+            var provider = new TestModelMetadataProvider();
+            provider
+                .ForType(typeof(int))
+                .BindingDetails(d => d.ModelBindingMessageProvider.SetNonPropertyValueMustBeANumberAccessor(
+                    () => $"Error message from override."));
+            var metadata = provider.GetMetadataForType(typeof(int));
+
+            var adapter = new NumericClientModelValidator();
             var actionContext = new ActionContext();
             var context = new ClientModelValidationContext(actionContext, metadata, provider, new AttributeDictionary());
 

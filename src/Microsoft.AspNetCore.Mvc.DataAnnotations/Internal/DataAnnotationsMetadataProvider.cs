@@ -129,8 +129,8 @@ namespace Microsoft.AspNetCore.Mvc.DataAnnotations.Internal
             }
 
             // DisplayName
-            // DisplayAttribute has precendence over DisplayNameAttribute.
-            if (displayAttribute != null && displayAttribute.GetName() != null)
+            // DisplayAttribute has precedence over DisplayNameAttribute.
+            if (displayAttribute?.GetName() != null)
             {
                 if (localizer != null &&
                     !string.IsNullOrEmpty(displayAttribute.Name) &&
@@ -176,8 +176,8 @@ namespace Microsoft.AspNetCore.Mvc.DataAnnotations.Internal
 
                 // EnumDisplayNamesAndValues and EnumNamesAndValues
                 //
-                // Order EnumDisplayNamesAndValues by DisplayAttribute.Order, then by the order of Enum.GetNames(). 
-                // That method orders by absolute value, then its behavior is undefined (but hopefully stable). 
+                // Order EnumDisplayNamesAndValues by DisplayAttribute.Order, then by the order of Enum.GetNames().
+                // That method orders by absolute value, then its behavior is undefined (but hopefully stable).
                 // Add to EnumNamesAndValues in same order but Dictionary does not guarantee order will be preserved.
 
                 var groupedDisplayNamesAndValues = new List<KeyValuePair<EnumGroupAndName, string>>();

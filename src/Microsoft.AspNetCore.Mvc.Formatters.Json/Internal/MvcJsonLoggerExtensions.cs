@@ -22,7 +22,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
             _jsonResultExecuting = LoggerMessage.Define<string>(
                 LogLevel.Information,
                 1,
-                "Executing JsonResult, writing value {Value}.");
+                "Executing JsonResult, writing value of type '{Type}'.");
         }
 
         public static void JsonInputException(this ILogger logger, Exception exception)
@@ -32,7 +32,8 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
 
         public static void JsonResultExecuting(this ILogger logger, object value)
         {
-            _jsonResultExecuting(logger, Convert.ToString(value), null);
+            var type = value == null ? "null" : value.GetType().FullName;
+            _jsonResultExecuting(logger, type, null);
         }
     }
 }

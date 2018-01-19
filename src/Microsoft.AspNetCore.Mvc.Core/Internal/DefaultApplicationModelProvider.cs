@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ActionConstraints;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
@@ -26,13 +27,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         }
 
         /// <inheritdoc />
-        public int Order
-        {
-            get
-            {
-                return -1000;
-            }
-        }
+        public int Order => -1000;
 
         /// <inheritdoc />
         public virtual void OnProvidersExecuting(ApplicationModelProviderContext context)
@@ -111,14 +106,14 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 throw new ArgumentNullException(nameof(typeInfo));
             }
 
-            // For attribute routes on a controller, we want want to support 'overriding' routes on a derived
+            // For attribute routes on a controller, we want to support 'overriding' routes on a derived
             // class. So we need to walk up the hierarchy looking for the first class to define routes.
             //
             // Then we want to 'filter' the set of attributes, so that only the effective routes apply.
             var currentTypeInfo = typeInfo;
             var objectTypeInfo = typeof(object).GetTypeInfo();
 
-            IRouteTemplateProvider[] routeAttributes = null;
+            IRouteTemplateProvider[] routeAttributes;
 
             do
             {
@@ -139,7 +134,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             // CoreCLR returns IEnumerable<Attribute> from GetCustomAttributes - the OfType<object>
             // is needed to so that the result of ToArray() is object
-            var attributes = typeInfo.GetCustomAttributes(inherit: true).OfType<object>().ToArray();
+            var attributes = typeInfo.GetCustomAttributes(inherit: true);
 
             // This is fairly complicated so that we maintain referential equality between items in
             // ControllerModel.Attributes and ControllerModel.Attributes[*].Attribute.
@@ -220,16 +215,25 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             // CoreCLR returns IEnumerable<Attribute> from GetCustomAttributes - the OfType<object>
             // is needed to so that the result of ToArray() is object
-            var attributes = propertyInfo.GetCustomAttributes(inherit: true).OfType<object>().ToArray();
+            var attributes = propertyInfo.GetCustomAttributes(inherit: true);
             var propertyModel = new PropertyModel(propertyInfo, attributes);
             var bindingInfo = BindingInfo.GetBindingInfo(attributes);
+            if (bindingInfo != null)
+            {
+                propertyModel.BindingInfo = bindingInfo;
+            }
+            else if (IsFormFileType(propertyInfo.PropertyType))
+            {
+                propertyModel.BindingInfo = new BindingInfo
+                {
+                    BindingSource = BindingSource.FormFile,
+                };
+            }
 
-            propertyModel.BindingInfo = bindingInfo;
             propertyModel.PropertyName = propertyInfo.Name;
 
             return propertyModel;
         }
-
 
         /// <summary>
         /// Creates the <see cref="ActionModel"/> instance for the given action <see cref="MethodInfo"/>.
@@ -261,7 +265,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             // CoreCLR returns IEnumerable<Attribute> from GetCustomAttributes - the OfType<object>
             // is needed to so that the result of ToArray() is object
-            var attributes = methodInfo.GetCustomAttributes(inherit: true).OfType<object>().ToArray();
+            var attributes = methodInfo.GetCustomAttributes(inherit: true);
 
             var actionModel = new ActionModel(methodInfo, attributes);
 
@@ -297,14 +301,14 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             //TODO: modify comment
             // Now we need to determine the action selection info (cross-section of routes and constraints)
             //
-            // For attribute routes on a action, we want want to support 'overriding' routes on a
+            // For attribute routes on a action, we want to support 'overriding' routes on a
             // virtual method, but allow 'overriding'. So we need to walk up the hierarchy looking
             // for the first definition to define routes.
             //
             // Then we want to 'filter' the set of attributes, so that only the effective routes apply.
             var currentMethodInfo = methodInfo;
 
-            IRouteTemplateProvider[] routeAttributes = null;
+            IRouteTemplateProvider[] routeAttributes;
 
             while (true)
             {
@@ -383,7 +387,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 return false;
             }
 
-            // Overriden methods from Object class, e.g. Equals(Object), GetHashCode(), etc., are not valid.
+            // Overridden methods from Object class, e.g. Equals(Object), GetHashCode(), etc., are not valid.
             if (methodInfo.GetBaseDefinition().DeclaringType == typeof(object))
             {
                 return false;
@@ -432,11 +436,21 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             // CoreCLR returns IEnumerable<Attribute> from GetCustomAttributes - the OfType<object>
             // is needed to so that the result of ToArray() is object
-            var attributes = parameterInfo.GetCustomAttributes(inherit: true).OfType<object>().ToArray();
+            var attributes = parameterInfo.GetCustomAttributes(inherit: true);
             var parameterModel = new ParameterModel(parameterInfo, attributes);
 
             var bindingInfo = BindingInfo.GetBindingInfo(attributes);
-            parameterModel.BindingInfo = bindingInfo;
+            if (bindingInfo != null)
+            {
+                parameterModel.BindingInfo = bindingInfo;
+            }
+            else if (IsFormFileType(parameterInfo.ParameterType))
+            {
+                parameterModel.BindingInfo = new BindingInfo
+                {
+                    BindingSource = BindingSource.FormFile,
+                };
+            }
 
             parameterModel.ParameterName = parameterInfo.Name;
 
@@ -485,8 +499,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             var createSelectorForSilentRouteProviders = false;
             foreach (var attribute in attributes)
             {
-                var routeTemplateProvider = attribute as IRouteTemplateProvider;
-                if (routeTemplateProvider != null)
+                if (attribute is IRouteTemplateProvider routeTemplateProvider)
                 {
                     if (IsSilentRouteAttribute(routeTemplateProvider))
                     {
@@ -657,6 +670,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 list.Add(item);
             }
+        }
+
+        private static bool IsFormFileType(Type parameterType)
+        {
+            return parameterType == typeof(IFormFile) ||
+                parameterType == typeof(IFormFileCollection) ||
+                typeof(IEnumerable<IFormFile>).IsAssignableFrom(parameterType);
         }
     }
 }

@@ -3,7 +3,7 @@
 
 using Microsoft.AspNetCore.Mvc;
 
-namespace AjaxAntiForgeryValidation.Controllers
+namespace SecurityWebSite.Controllers
 {
     [AutoValidateAntiforgeryToken]
     public class AntiforgeryController : Controller

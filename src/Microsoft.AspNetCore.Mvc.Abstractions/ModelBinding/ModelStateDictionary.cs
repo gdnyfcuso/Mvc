@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Extensions.Primitives;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding
@@ -112,10 +113,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
         /// Returns <c>true</c> if a <see cref="TooManyModelErrorsException"/> has been recorded;
         /// otherwise <c>false</c>.
         /// </remarks>
-        public bool HasReachedMaxErrors
-        {
-            get { return ErrorCount >= MaxAllowedErrors; }
-        }
+        public bool HasReachedMaxErrors => ErrorCount >= MaxAllowedErrors;
 
         /// <summary>
         /// Gets the number of errors added to this instance of <see cref="ModelStateDictionary"/> via
@@ -166,8 +164,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
                     throw new ArgumentNullException(nameof(key));
                 }
 
-                ModelStateEntry entry;
-                TryGetValue(key, out entry);
+                TryGetValue(key, out var entry);
                 return entry;
             }
         }
@@ -240,23 +237,37 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
             if (exception is FormatException || exception is OverflowException)
             {
                 // Convert FormatExceptions and OverflowExceptions to Invalid value messages.
-                ModelStateEntry entry;
-                TryGetValue(key, out entry);
+                TryGetValue(key, out var entry);
 
-                var name = metadata.GetDisplayName();
+                // Not using metadata.GetDisplayName() or a single resource to avoid strange messages like
+                // "The value '' is not valid." (when no value was provided, not even an empty string) and
+                // "The supplied value is invalid for Int32." (when error is for an element or parameter).
+                var messageProvider = metadata.ModelBindingMessageProvider;
+                var name = metadata.DisplayName ?? metadata.PropertyName;
                 string errorMessage;
-                if (entry == null)
+                if (entry == null && name == null)
                 {
-                    errorMessage = metadata.ModelBindingMessageProvider.UnknownValueIsInvalidAccessor(name);
+                    errorMessage = messageProvider.NonPropertyUnknownValueIsInvalidAccessor();
+                }
+                else if (entry == null)
+                {
+                    errorMessage = messageProvider.UnknownValueIsInvalidAccessor(name);
+                }
+                else if (name == null)
+                {
+                    errorMessage = messageProvider.NonPropertyAttemptedValueIsInvalidAccessor(entry.AttemptedValue);
                 }
                 else
                 {
-                    errorMessage = metadata.ModelBindingMessageProvider.AttemptedValueIsInvalidAccessor(
-                        entry.AttemptedValue,
-                        name);
+                    errorMessage = messageProvider.AttemptedValueIsInvalidAccessor(entry.AttemptedValue, name);
                 }
 
                 return TryAddModelError(key, errorMessage);
+            }
+            else if (exception is InputFormatterException && !string.IsNullOrEmpty(exception.Message))
+            {
+                // InputFormatterException is a signal that the message is safe to expose to clients
+                return TryAddModelError(key, exception.Message);
             }
 
             ErrorCount++;
@@ -357,8 +368,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
                 throw new ArgumentNullException(nameof(key));
             }
 
-            ModelStateEntry validationState;
-            if (TryGetValue(key, out validationState))
+            if (TryGetValue(key, out var validationState))
             {
                 return validationState.ValidationState;
             }

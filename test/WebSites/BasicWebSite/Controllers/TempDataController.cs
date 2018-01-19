@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BasicWebSite.Filters;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BasicWebSite.Controllers
@@ -101,6 +103,26 @@ namespace BasicWebSite.Controllers
         public string GetLargeValueFromTempData()
         {
             return TempData["LargeValue"]?.ToString();
+        }
+
+        [HttpGet]
+        [TestExceptionFilter]
+        public IActionResult UnhandledExceptionAndSettingTempData()
+        {
+            TempData[nameof(UnhandledExceptionAndSettingTempData)] = "James";
+            throw new InvalidOperationException($"Exception from action {nameof(UnhandledExceptionAndSettingTempData)}");
+        }
+
+        [HttpGet]
+        public string UnhandledExceptionAndGetTempData()
+        {
+            return TempData[nameof(UnhandledExceptionAndSettingTempData)]?.ToString();
+        }
+
+        [HttpGet]
+        public void GrantConsent()
+        {
+            HttpContext.Features.Get<ITrackingConsentFeature>().GrantConsent();
         }
     }
 }

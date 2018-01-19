@@ -1,7 +1,6 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -115,18 +114,44 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             Assert.Equal("/Login?ReturnUrl=%2FConventions%2FAuthFolder", response.Headers.Location.PathAndQuery);
         }
 
+         [Fact]
+        public async Task AuthConvention_AppliedToFolders_CanByOverridenByFiltersOnModel()
+        {
+            // Act
+            var response = await Client.GetStringAsync("/Conventions/AuthFolder/AnonymousViaModel");
+
+            // Assert
+            Assert.Equal("Hello from Anonymous", response.Trim());
+        }
+
         [Fact]
         public async Task ViewStart_IsDiscoveredWhenRootDirectoryIsSpecified()
         {
             // Test for https://github.com/aspnet/Mvc/issues/5915
             //Arrange
-            var expected = $"Hello from _ViewStart{Environment.NewLine}Hello from /Pages/WithViewStart/Index.cshtml!";
+            var expected = @"Hello from _ViewStart
+Hello from /Pages/WithViewStart/Index.cshtml!";
 
             // Act
             var response = await Client.GetStringAsync("/WithViewStart");
 
             // Assert
-            Assert.Equal(expected, response.Trim());
+            Assert.Equal(expected, response, ignoreLineEndingDifferences: true);
+        }
+
+        [Fact]
+        public async Task ViewStart_IsDiscoveredForFilesOutsidePageRoot()
+        {
+            //Arrange
+            var expected = @"Hello from _ViewStart at root
+Hello from _ViewStart
+Hello from page";
+
+            // Act
+            var response = await Client.GetStringAsync("/WithViewStart/ViewStartAtRoot");
+
+            // Assert
+            Assert.Equal(expected, response.Trim(), ignoreLineEndingDifferences: true);
         }
 
         [Fact]
@@ -188,14 +213,14 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             var response = await Client.GetStringAsync("/TagHelper/CrossPost");
 
             // Assert
-            Assert.Equal(expected, response.Trim());
+            Assert.Equal(expected, response.Trim(), ignoreLineEndingDifferences: true);
         }
 
         [Fact]
         public async Task FormActionTagHelper_WithPage_AllowsPostingToAnotherPage()
         {
             //Arrange
-            var expected = 
+            var expected =
 @"<button formaction=""/TagHelper/CrossPost/10"" />
 <input type=""submit"" formaction=""/TagHelper/CrossPost/10"" />
 <input type=""image"" formaction=""/TagHelper/CrossPost/10"" />
@@ -207,7 +232,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             var response = await Client.GetStringAsync("/TagHelper/FormAction");
 
             // Assert
-            Assert.Equal(expected, response.Trim());
+            Assert.Equal(expected, response, ignoreLineEndingDifferences: true);
         }
 
         [Fact]
@@ -249,6 +274,122 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task Pages_ReturnsFromPagesSharedDirectory()
+        {
+            // Arrange
+            var expected = "Hello from /Pages/Shared/";
+
+            // Act
+            var response = await Client.GetStringAsync("/SearchInPages");
+
+            // Assert
+            Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task PagesInAreas_Work()
+        {
+            // Arrange
+            var expected = "Hello from a page in Accounts area";
+
+            // Act
+            var response = await Client.GetStringAsync("/Accounts/About");
+
+            // Assert
+            Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task PagesInAreas_CanHaveRouteTemplates()
+        {
+            // Arrange
+            var expected = "The id is 42";
+
+            // Act
+            var response = await Client.GetStringAsync("/Accounts/PageWithRouteTemplate/42");
+
+            // Assert
+            Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task PagesInAreas_CanGenerateLinksToControllersAndPages()
+        {
+            // Arrange
+            var expected = 
+@"<a href=""/Accounts/Manage/RenderPartials"">Link inside area</a>
+<a href=""/Products/List/old/20"">Link to external area</a>
+<a href=""/Accounts"">Link to area action</a>
+<a href=""/Admin"">Link to non-area page</a>";
+
+            // Act
+            var response = await Client.GetStringAsync("/Accounts/PageWithLinks");
+
+            // Assert
+            Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task PagesInAreas_CanGenerateRelativeLinks()
+        {
+            // Arrange
+            var expected = 
+@"<a href=""/Accounts/PageWithRouteTemplate/1"">Parent directory</a>
+<a href=""/Accounts/Manage/RenderPartials"">Sibling directory</a>
+<a href=""/Products/List"">Go back to root of different area</a>";
+
+            // Act
+            var response = await Client.GetStringAsync("/Accounts/RelativeLinks");
+
+            // Assert
+            Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task PagesInAreas_CanDiscoverViewsFromAreaAndSharedDirectories()
+        {
+            // Arrange
+            var expected = 
+@"Layout in /Views/Shared
+Partial in /Areas/Accounts/Pages/Manage/
+
+Partial in /Areas/Accounts/Pages/
+
+Partial in /Areas/Accounts/Pages/
+
+Partial in /Areas/Accounts/Views/Shared/
+
+Hello from /Pages/Shared/";
+
+            // Act
+            var response = await Client.GetStringAsync("/Accounts/Manage/RenderPartials");
+
+            // Assert
+            Assert.Equal(expected, response.Trim());
+        }
+
+        [Fact]
+        public async Task AuthorizeFolderConvention_CanBeAppliedToAreaPages()
+        {
+            // Act
+            var response = await Client.GetAsync("/Accounts/RequiresAuth");
+
+            // Assert
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal("/Login?ReturnUrl=%2FAccounts%2FRequiresAuth", response.Headers.Location.PathAndQuery);
+        }
+
+        [Fact]
+        public async Task AllowAnonymouseToPageConvention_CanBeAppliedToAreaPages()
+        {
+            // Act
+            var response = await Client.GetStringAsync("/Accounts/RequiresAuth/AllowAnonymous");
+
+            // Assert
+            Assert.Equal("Hello from AllowAnonymous", response.Trim());
         }
     }
 }

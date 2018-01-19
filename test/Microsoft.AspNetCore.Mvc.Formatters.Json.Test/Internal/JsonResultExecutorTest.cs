@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Newtonsoft.Json;
 using Xunit;
@@ -182,12 +183,46 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
             Assert.Equal(expected, written);
         }
 
-        private static JsonResultExecutor CreateExcutor()
+        [Fact]
+        public async Task ExecuteAsync_NonNullResult_LogsResultType()
+        {
+            // Arrange
+            var expected = "Executing JsonResult, writing value of type 'System.String'.";
+            var context = GetActionContext();
+            var logger = new StubLogger();
+            var executer = CreateExcutor(logger);
+            var result = new JsonResult("result_value");
+
+            // Act
+            await executer.ExecuteAsync(context, result);
+
+            // Assert
+            Assert.Equal(expected, logger.MostRecentMessage);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_NullResult_LogsNull()
+        {
+            // Arrange
+            var expected = "Executing JsonResult, writing value of type 'null'.";
+            var context = GetActionContext();
+            var logger = new StubLogger();
+            var executer = CreateExcutor(logger);
+            var result = new JsonResult(null);
+
+            // Act
+            await executer.ExecuteAsync(context, result);
+
+            // Assert
+            Assert.Equal(expected, logger.MostRecentMessage);
+        }
+
+        private static JsonResultExecutor CreateExcutor(ILogger<JsonResultExecutor> logger = null)
         {
             return new JsonResultExecutor(
                 new TestHttpResponseStreamWriterFactory(),
-                NullLogger<JsonResultExecutor>.Instance,
-                new TestOptionsManager<MvcJsonOptions>(),
+                logger ?? NullLogger<JsonResultExecutor>.Instance,
+                Options.Create(new MvcJsonOptions()),
                 ArrayPool<char>.Shared);
         }
 
@@ -224,6 +259,20 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
                 {
                     throw new NotImplementedException($"Property {nameof(Age)} has not been implemented");
                 }
+            }
+        }
+
+        private class StubLogger : ILogger<JsonResultExecutor>
+        {
+            public string MostRecentMessage { get; private set; }
+
+            public IDisposable BeginScope<TState>(TState state) => throw new NotImplementedException();
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+            {
+                MostRecentMessage = formatter(state, exception);
             }
         }
     }

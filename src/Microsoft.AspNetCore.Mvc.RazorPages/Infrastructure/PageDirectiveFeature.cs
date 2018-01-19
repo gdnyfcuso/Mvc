@@ -2,62 +2,75 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.IO;
+using Microsoft.AspNetCore.Mvc.Razor.Extensions;
+using Microsoft.AspNetCore.Mvc.RazorPages.Internal;
 using Microsoft.AspNetCore.Razor.Language;
+using Microsoft.AspNetCore.Razor.Language.Intermediate;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
 {
     public static class PageDirectiveFeature
     {
-        public static bool TryGetPageDirective(RazorProjectItem projectItem, out string template)
+        private static readonly RazorEngine PageDirectiveEngine = RazorEngine.Create(builder =>
+        {
+            for (var i = builder.Phases.Count - 1; i >= 0; i--)
+            {
+                var phase = builder.Phases[i];
+                builder.Phases.RemoveAt(i);
+                if (phase is IRazorDocumentClassifierPhase)
+                {
+                    break;
+                }
+            }
+
+            RazorExtensions.Register(builder);
+            builder.Features.Add(new PageDirectiveParserOptionsFeature());
+        });
+
+        public static bool TryGetPageDirective(ILogger logger, RazorProjectItem projectItem, out string template)
         {
             if (projectItem == null)
             {
                 throw new ArgumentNullException(nameof(projectItem));
             }
 
-            return TryGetPageDirective(projectItem.Read, out template);
+            var sourceDocument = RazorSourceDocument.ReadFrom(projectItem);
+            return TryGetPageDirective(logger, sourceDocument, out template);
         }
 
-        public static bool TryGetPageDirective(Func<Stream> streamFactory, out string template)
+        static bool TryGetPageDirective(
+            ILogger logger,
+            RazorSourceDocument sourceDocument,
+            out string template)
         {
-            if (streamFactory == null)
-            {
-                throw new ArgumentNullException(nameof(streamFactory));
-            }
+            var codeDocument = RazorCodeDocument.Create(sourceDocument);
+            PageDirectiveEngine.Process(codeDocument);
 
-            const string PageDirective = "@page";
-
-            string content;
-            using (var streamReader = new StreamReader(streamFactory()))
+            var documentIRNode = codeDocument.GetDocumentIntermediateNode();
+            if (PageDirective.TryGetPageDirective(documentIRNode, out var pageDirective))
             {
-                do
+                if (pageDirective.DirectiveNode is MalformedDirectiveIntermediateNode malformedNode)
                 {
-                    content = streamReader.ReadLine();
+                    logger.MalformedPageDirective(sourceDocument.FilePath, malformedNode.Diagnostics);
+                }
 
-                } while (content != null && string.IsNullOrWhiteSpace(content));
-                content = content?.Trim();
+                template = pageDirective.RouteTemplate;
+                return true;
             }
 
-            if (content == null || !content.StartsWith(PageDirective, StringComparison.Ordinal))
+            template = null;
+            return false;
+        }
+
+        private class PageDirectiveParserOptionsFeature : RazorEngineFeatureBase, IConfigureRazorParserOptionsFeature
+        {
+            public int Order { get; }
+
+            public void Configure(RazorParserOptionsBuilder options)
             {
-                template = null;
-                return false;
+                options.ParseLeadingDirectives = true;
             }
-
-            template = content.Substring(PageDirective.Length, content.Length - PageDirective.Length).TrimStart();
-
-            if (template.StartsWith("\"") && template.EndsWith("\""))
-            {
-                template = template.Substring(1, template.Length - 2);
-            }
-            // If it's not in quotes it's not our template
-            else
-            {
-                template = string.Empty;
-            }
-
-            return true;
         }
     }
 }

@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -29,7 +32,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new ParameterBinder(
                 modelMetadataProvider,
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             // Act
             var factory = PagePropertyBinderFactory.CreateBinder(binder, modelMetadataProvider, actionDescriptor);
@@ -52,7 +56,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new ParameterBinder(
                 TestModelMetadataProvider.CreateDefaultProvider(),
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             // Act
             var factory = PagePropertyBinderFactory.CreateBinder(binder, modelMetadataProvider, actionDescriptor);
@@ -73,7 +78,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new ParameterBinder(
                 modelMetadataProvider,
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             // Act
             var factory = PagePropertyBinderFactory.CreateBinder(binder, modelMetadataProvider, actionDescriptor);
@@ -95,7 +101,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new ParameterBinder(
                 modelMetadataProvider,
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             // Act
             var factory = PagePropertyBinderFactory.CreateBinder(binder, modelMetadataProvider, actionDescriptor);
@@ -116,7 +123,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new ParameterBinder(
                 modelMetadataProvider,
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             // Act
             var factory = PagePropertyBinderFactory.CreateBinder(binder, modelMetadataProvider, actionDescriptor);
@@ -138,7 +146,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new ParameterBinder(
                 modelMetadataProvider,
                 TestModelBinderFactory.CreateDefault(),
-                Mock.Of<IObjectModelValidator>());
+                Mock.Of<IModelValidatorProvider>(),
+                NullLoggerFactory.Instance);
 
             // Act
             var factory = PagePropertyBinderFactory.CreateBinder(binder, modelMetadataProvider, actionDescriptor);
@@ -155,7 +164,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             var actionDescriptor = new CompiledPageActionDescriptor
             {
-                BoundProperties = new []
+                BoundProperties = new[]
                 {
                     new PageBoundPropertyDescriptor()
                     {
@@ -192,14 +201,11 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             var page = new PageWithProperty
             {
-                PageContext = new PageContext()
-                {
-                    HttpContext = new DefaultHttpContext(),
-                },
+                PageContext = GetPageContext(),
             };
 
             // Act
-            await factory(page, null);
+            await factory(page.PageContext, page);
 
             // Assert
             Assert.Equal(10, page.Id);
@@ -253,16 +259,13 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             var page = new PageWithProperty
             {
-                PageContext = new PageContext()
-                {
-                    HttpContext = new DefaultHttpContext(),
-                }
+                PageContext = GetPageContext()
             };
 
             var model = new PageModelWithProperty();
 
             // Act
-            await factory(page, model);
+            await factory(page.PageContext, model);
 
             // Assert
             // Verify that the page properties were not bound.
@@ -304,17 +307,14 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             var page = new PageWithProperty
             {
-                PageContext = new PageContext()
-                {
-                    HttpContext = new DefaultHttpContext(),
-                }
+                PageContext = GetPageContext()
             };
 
             var model = new PageModelWithDefaultValue();
             var defaultValue = model.PropertyWithDefaultValue;
 
             // Act
-            await factory(page, model);
+            await factory(page.PageContext, model);
 
             // Assert
             Assert.Equal(defaultValue, model.PropertyWithDefaultValue);
@@ -324,7 +324,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
         [InlineData("Get")]
         [InlineData("GET")]
         [InlineData("gET")]
-        public async Task ModelBinderFactory_IgnoresPropertyWithoutSupportsGet_WhenRequestIsGet(string method)
+        public async Task ModelBinderFactory_BindsPropertyWithoutSupportsGet_WhenRequestIsGet(string method)
         {
             // Arrange
             var type = typeof(PageModelWithSupportsGetProperty).GetTypeInfo();
@@ -338,7 +338,11 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                         Name = nameof(PageModelWithSupportsGetProperty.SupportsGet),
                         ParameterType = typeof(string),
                         Property = type.GetProperty(nameof(PageModelWithSupportsGetProperty.SupportsGet)),
-                        SupportsGet = true,
+                        BindingInfo = new BindingInfo()
+                        {
+                            // Simulates placing a [BindProperty] on the property
+                            RequestPredicate = ((IRequestPredicateProvider)new BindPropertyAttribute() { SupportsGet = true }).RequestPredicate,
+                        }
                     },
                     new PageBoundPropertyDescriptor()
                     {
@@ -356,7 +360,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var binder = new TestParameterBinder(new Dictionary<string, object>()
             {
                 { "SupportsGet", "value" },
-                { "Default", "ignored" },
+                { "Default", "set" },
             });
 
             var modelMetadataProvider = TestModelMetadataProvider.CreateDefaultProvider();
@@ -364,22 +368,17 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             var page = new PageWithProperty
             {
-                PageContext = new PageContext()
-                {
-                    HttpContext = new DefaultHttpContext(),
-                }
+                PageContext = GetPageContext(method)
             };
-
-            page.HttpContext.Request.Method = method;
 
             var model = new PageModelWithSupportsGetProperty();
 
             // Act
-            await factory(page, model);
+            await factory(page.PageContext, model);
 
             // Assert
             Assert.Equal("value", model.SupportsGet);
-            Assert.Null(model.Default);
+            Assert.Equal("set", model.Default);
         }
 
         [Fact]
@@ -397,7 +396,10 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                         Name = nameof(PageModelWithSupportsGetProperty.SupportsGet),
                         ParameterType = typeof(string),
                         Property = type.GetProperty(nameof(PageModelWithSupportsGetProperty.SupportsGet)),
-                        SupportsGet = true,
+                        BindingInfo = new BindingInfo()
+                        {
+                            RequestPredicate = ((IRequestPredicateProvider)new BindPropertyAttribute() { SupportsGet = true }).RequestPredicate,
+                        }
                     },
                     new PageBoundPropertyDescriptor()
                     {
@@ -423,10 +425,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 
             var page = new PageWithProperty
             {
-                PageContext = new PageContext()
-                {
-                    HttpContext = new DefaultHttpContext(),
-                }
+                PageContext = GetPageContext()
             };
 
             page.HttpContext.Request.Method = "Post";
@@ -434,11 +433,32 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
             var model = new PageModelWithSupportsGetProperty();
 
             // Act
-            await factory(page, model);
+            await factory(page.PageContext, model);
 
             // Assert
             Assert.Equal("value", model.SupportsGet);
             Assert.Equal("value", model.Default);
+        }
+
+        private PageContext GetPageContext(string httpMethod = null)
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+
+            var httpContext = new DefaultHttpContext()
+            {
+                RequestServices = services.BuildServiceProvider()
+            };
+
+            if (httpMethod != null)
+            {
+                httpContext.Request.Method = httpMethod;
+            }
+
+            return new PageContext()
+            {
+                HttpContext = httpContext
+            };
         }
 
         private class TestParameterBinder : ParameterBinder
@@ -449,7 +469,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
                 : base(
                     TestModelMetadataProvider.CreateDefaultProvider(),
                     TestModelBinderFactory.CreateDefault(),
-                    Mock.Of<IObjectModelValidator>())
+                    Mock.Of<IModelValidatorProvider>(),
+                    NullLoggerFactory.Instance)
             {
                 _args = args;
             }

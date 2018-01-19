@@ -66,7 +66,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new ArgumentNullException(nameof(setupAction));
             }
 
-            builder.Services.Configure<MvcJsonOptions>(setupAction);
+            builder.Services.Configure(setupAction);
             return builder;
         }
 
@@ -75,6 +75,8 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             services.TryAddEnumerable(
                 ServiceDescriptor.Transient<IConfigureOptions<MvcOptions>, MvcJsonMvcOptionsSetup>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Transient<IPostConfigureOptions<MvcJsonOptions>, MvcJsonOptionsConfigureCompatibilityOptions>());
             services.TryAddEnumerable(
                 ServiceDescriptor.Transient<IApiDescriptionProvider, JsonPatchOperationsArrayProvider>());
             services.TryAddSingleton<JsonResultExecutor>();

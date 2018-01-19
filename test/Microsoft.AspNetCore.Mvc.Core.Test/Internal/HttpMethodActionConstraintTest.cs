@@ -26,7 +26,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
         [Theory]
         [MemberData(nameof(AcceptCaseInsensitiveData))]
-        public void HttpMethodActionConstraint_Accept_Preflight_CaseInsensitive(IEnumerable<string> httpMethods, string accessControlMethod)
+        public void HttpMethodActionConstraint_IgnoresPreflightRequests(IEnumerable<string> httpMethods, string accessControlMethod)
         {
             // Arrange
             var constraint = new HttpMethodActionConstraint(httpMethods);
@@ -37,7 +37,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             var result = constraint.Accept(context);
 
             // Assert
-            Assert.True(result, "Request should have been accepted.");
+            Assert.False(result, "Request should have been rejected.");
         }
 
         [Theory]

@@ -187,7 +187,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order1>(modelBindingResult.Model);
             Assert.Equal("bill", model.CustomerName);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -224,7 +224,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order1>(modelBindingResult.Model);
             Assert.Null(model.CustomerName);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(1, modelState.ErrorCount);
             Assert.False(modelState.IsValid);
 
@@ -276,7 +276,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(model.Customer);
             Assert.Equal("bill", model.Customer.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -313,7 +313,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order2>(modelBindingResult.Model);
             Assert.Null(model.Customer);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(1, modelState.ErrorCount);
             Assert.False(modelState.IsValid);
 
@@ -367,7 +367,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(model.Customer);
             Assert.Equal("bill", model.Customer.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -459,7 +459,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(model.Items);
             Assert.Equal(17, Assert.Single(model.Items).ItemId);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -497,7 +497,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order4>(modelBindingResult.Model);
             Assert.Null(model.Items);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(1, modelState.ErrorCount);
             Assert.False(modelState.IsValid);
 
@@ -545,7 +545,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<List<Order5>>(modelBindingResult.Model);
             Assert.Equal(17, Assert.Single(model).ProductId);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -631,7 +631,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order6>(modelBindingResult.Model);
             Assert.Equal("bill", model.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -668,7 +668,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order6>(modelBindingResult.Model);
             Assert.Equal("billybob", model.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(1, modelState.ErrorCount);
             Assert.False(modelState.IsValid);
 
@@ -719,7 +719,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order7>(modelBindingResult.Model);
             Assert.Equal("bill", model.Customer.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -756,7 +756,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order7>(modelBindingResult.Model);
             Assert.Equal("billybob", model.Customer.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(1, modelState.ErrorCount);
             Assert.False(modelState.IsValid);
 
@@ -796,7 +796,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order7>(modelBindingResult.Model);
             Assert.Null(model.Customer);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }
@@ -854,7 +854,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order8>(modelBindingResult.Model);
             Assert.Equal("bill", model.Customer.Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -961,7 +961,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<Order9>(modelBindingResult.Model);
             Assert.Equal("bill", Assert.Single(model.Products).Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -1049,7 +1049,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<List<Order10>>(modelBindingResult.Model);
             Assert.Equal("bill", Assert.Single(model).Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
 
@@ -1086,7 +1086,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<List<Order10>>(modelBindingResult.Model);
             Assert.Equal("billybob", Assert.Single(model).Name);
 
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
             Assert.Equal(1, modelState.ErrorCount);
             Assert.False(modelState.IsValid);
 
@@ -1126,7 +1126,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             var model = Assert.IsType<List<Order10>>(modelBindingResult.Model);
             Assert.Empty(model);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }
@@ -1225,7 +1225,10 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
 
             public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
             {
-                return new[] { new ValidationResult("This is not valid.") };
+                var result = new ValidationResult(
+                    $"'{validationContext.MemberName}' (display: '{validationContext.DisplayName}') is not valid due " +
+                    $"to its {nameof(NeverValid)} type.");
+                return new[] { result };
             }
         }
 
@@ -1240,15 +1243,19 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
                     return ValidationResult.Success;
                 }
 
-                return new ValidationResult("Properties with this are not valid.");
+                return new ValidationResult(
+                    $"'{validationContext.MemberName}' (display: '{validationContext.DisplayName}') is not valid due " +
+                    $"to its associated {nameof(NeverValidAttribute)}.");
             }
         }
 
         private class ValidateSomeProperties
         {
-            public NeverValid NeverValid { get; set; }
+            [Display(Name = "Not ever valid")]
+            public NeverValid NeverValidBecauseType { get; set; }
 
             [NeverValid]
+            [Display(Name = "Never valid")]
             public string NeverValidBecauseAttribute { get; set; }
 
             [ValidateNever]
@@ -1276,7 +1283,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
 
             var testContext = ModelBindingTestHelper.GetTestContext(
                 request => request.QueryString
-                    = new QueryString($"?{nameof(ValidateSomeProperties.NeverValid)}.{nameof(NeverValid.NeverValidProperty)}=1"));
+                    = new QueryString($"?{nameof(ValidateSomeProperties.NeverValidBecauseType)}.{nameof(NeverValid.NeverValidProperty)}=1"));
 
             var parameterBinder = ModelBindingTestHelper.GetParameterBinder();
             var modelState = testContext.ModelState;
@@ -1287,7 +1294,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             // Assert
             Assert.True(result.IsModelSet);
             var model = Assert.IsType<ValidateSomeProperties>(result.Model);
-            Assert.Equal("1", model.NeverValid.NeverValidProperty);
+            Assert.Equal("1", model.NeverValidBecauseType.NeverValidProperty);
 
             Assert.False(modelState.IsValid);
             Assert.Equal(1, modelState.ErrorCount);
@@ -1295,17 +1302,19 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
                 modelState,
                 state =>
                 {
-                    Assert.Equal(nameof(ValidateSomeProperties.NeverValid), state.Key);
+                    Assert.Equal(nameof(ValidateSomeProperties.NeverValidBecauseType), state.Key);
                     Assert.Equal(ModelValidationState.Invalid, state.Value.ValidationState);
 
                     var error = Assert.Single(state.Value.Errors);
-                    Assert.Equal("This is not valid.", error.ErrorMessage);
+                    Assert.Equal(
+                        "'NeverValidBecauseType' (display: 'Not ever valid') is not valid due to its NeverValid type.",
+                        error.ErrorMessage);
                     Assert.Null(error.Exception);
                 },
                 state =>
                 {
                     Assert.Equal(
-                        $"{nameof(ValidateSomeProperties.NeverValid)}.{nameof(NeverValid.NeverValidProperty)}",
+                        $"{nameof(ValidateSomeProperties.NeverValidBecauseType)}.{nameof(NeverValid.NeverValidProperty)}",
                         state.Key);
                     Assert.Equal(ModelValidationState.Valid, state.Value.ValidationState);
                 });
@@ -1344,7 +1353,9 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(state);
             Assert.Equal(ModelValidationState.Invalid, state.ValidationState);
             var error = Assert.Single(state.Errors);
-            Assert.Equal("Properties with this are not valid.", error.ErrorMessage);
+            Assert.Equal(
+                "'NeverValidBecauseAttribute' (display: 'Never valid') is not valid due to its associated NeverValidAttribute.",
+                error.ErrorMessage);
             Assert.Null(error.Exception);
         }
 
@@ -1410,7 +1421,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
         }
 
         [Theory]
-        [InlineData(nameof(ValidateSomeProperties.NeverValid) + "." + nameof(NeverValid.NeverValidProperty))]
+        [InlineData(nameof(ValidateSomeProperties.NeverValidBecauseType) + "." + nameof(NeverValid.NeverValidProperty))]
         [InlineData(nameof(ValidateSomeProperties.NeverValidBecauseAttribute))]
         [InlineData(nameof(ValidateSomeProperties.ValidateNever))]
         public async Task PropertyWithinValidateNeverType_IsSkipped(string propertyName)
@@ -1679,7 +1690,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.Equal("Hello", message);
 
             Assert.True(modelState.IsValid);
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
 
             var entry = Assert.Single(modelState, kvp => kvp.Key == "CustomParameter.message");
             Assert.Equal(ModelValidationState.Skipped, entry.Value.ValidationState);
@@ -1721,7 +1732,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.IsType<CancellationToken>(modelBindingResult.Model);
 
             Assert.False(modelState.IsValid);
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
 
             var entry = Assert.Single(modelState, kvp => kvp.Key == "message");
             Assert.Equal(ModelValidationState.Unvalidated, entry.Value.ValidationState);
@@ -1767,7 +1778,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.Equal("Hello", message);
 
             Assert.False(modelState.IsValid);
-            Assert.Equal(1, modelState.Count);
+            Assert.Single(modelState);
 
             var entry = Assert.Single(modelState, kvp => kvp.Key == "other.key");
             Assert.Equal(ModelValidationState.Unvalidated, entry.Value.ValidationState);

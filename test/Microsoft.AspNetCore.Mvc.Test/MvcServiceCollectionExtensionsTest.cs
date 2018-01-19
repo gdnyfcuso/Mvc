@@ -31,6 +31,7 @@ using Microsoft.AspNetCore.Mvc.ViewComponents;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.ObjectPool;
@@ -56,7 +57,7 @@ namespace Microsoft.AspNetCore.Mvc
             var services = new ServiceCollection();
             services.AddSingleton<IHostingEnvironment>(GetHostingEnvironment());
 
-            // Register a mock implementation of each service, AddMvcServices should add another implemenetation.
+            // Register a mock implementation of each service, AddMvcServices should add another implementation.
             foreach (var serviceType in MutliRegistrationServiceTypes)
             {
                 var mockType = typeof(Mock<>).MakeGenericType(serviceType.Key);
@@ -214,8 +215,8 @@ namespace Microsoft.AspNetCore.Mvc
                 feature => Assert.IsType<ControllerFeatureProvider>(feature),
                 feature => Assert.IsType<ViewComponentFeatureProvider>(feature),
                 feature => Assert.IsType<MetadataReferenceFeatureProvider>(feature),
-                feature => Assert.IsType<ViewsFeatureProvider>(feature),
-                feature => Assert.IsType<CompiledPageFeatureProvider>(feature));
+                feature => Assert.IsType<TagHelperFeatureProvider>(feature),
+                feature => Assert.IsType<ViewsFeatureProvider>(feature));
         }
 
         [Fact]
@@ -260,6 +261,7 @@ namespace Microsoft.AspNetCore.Mvc
             services.AddSingleton<IHostingEnvironment>(GetHostingEnvironment());
             services.AddSingleton<ObjectPoolProvider, DefaultObjectPoolProvider>();
             services.AddSingleton<DiagnosticSource>(new DiagnosticListener("Microsoft.AspNet"));
+            services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
             services.AddLogging();
             services.AddOptions();
             services.AddMvc();
@@ -348,6 +350,13 @@ namespace Microsoft.AspNetCore.Mvc
                         }
                     },
                     {
+                        typeof(IConfigureOptions<ApiBehaviorOptions>),
+                        new Type[]
+                        {
+                            typeof(ApiBehaviorOptionsSetup),
+                        }
+                    },
+                    {
                         typeof(IConfigureOptions<MvcViewOptions>),
                         new Type[]
                         {
@@ -360,15 +369,28 @@ namespace Microsoft.AspNetCore.Mvc
                         new[]
                         {
                             typeof(RazorViewEngineOptionsSetup),
-                            typeof(DependencyContextRazorViewEngineOptionsSetup),
                             typeof(RazorPagesRazorViewEngineOptionsSetup),
                         }
                     },
                     {
-                        typeof(IConfigureOptions<RazorPagesOptions>),
+                        typeof(IPostConfigureOptions<MvcOptions>),
                         new[]
                         {
-                            typeof(RazorPagesOptionsSetup),
+                            typeof(MvcOptions).Assembly.GetType("Microsoft.AspNetCore.Mvc.Infrastructure.MvcOptionsConfigureCompatibilityOptions", throwOnError: true),
+                        }
+                    },
+                    {
+                        typeof(IPostConfigureOptions<RazorPagesOptions>),
+                        new[]
+                        {
+                            typeof(RazorPagesOptions).Assembly.GetType("Microsoft.AspNetCore.Mvc.RazorPages.RazorPagesOptionsConfigureCompatibilityOptions", throwOnError: true),
+                        }
+                    },
+                    {
+                        typeof(IPostConfigureOptions<MvcJsonOptions>),
+                        new[]
+                        {
+                            typeof(MvcJsonOptions).Assembly.GetType("Microsoft.AspNetCore.Mvc.MvcJsonOptionsConfigureCompatibilityOptions", throwOnError: true),
                         }
                     },
                     {
@@ -417,6 +439,7 @@ namespace Microsoft.AspNetCore.Mvc
                             typeof(CorsApplicationModelProvider),
                             typeof(AuthorizationApplicationModelProvider),
                             typeof(TempDataApplicationModelProvider),
+                            typeof(ApiBehaviorApplicationModelProvider),
                         }
                     },
                     {
@@ -424,15 +447,27 @@ namespace Microsoft.AspNetCore.Mvc
                         new Type[]
                         {
                             typeof(DefaultApiDescriptionProvider),
+                            typeof(ApiBehaviorApiDescriptionProvider),
                             typeof(JsonPatchOperationsArrayProvider),
+                        }
+                    },
+                    {
+                        typeof(IPageRouteModelProvider),
+                        new[]
+                        {
+                            typeof(CompiledPageRouteModelProvider),
+                            typeof(RazorProjectPageRouteModelProvider),
                         }
                     },
                     {
                         typeof(IPageApplicationModelProvider),
                         new[]
                         {
-                            typeof(CompiledPageApplicationModelProvider),
-                            typeof(RazorProjectPageApplicationModelProvider),
+                            typeof(AuthorizationPageApplicationModelProvider),
+                            typeof(AuthorizationPageApplicationModelProvider),
+                            typeof(DefaultPageApplicationModelProvider),
+                            typeof(TempDataFilterPageApplicationModelProvider),
+                            typeof(ResponseCacheFilterApplicationModelProvider),
                         }
                     },
                 };

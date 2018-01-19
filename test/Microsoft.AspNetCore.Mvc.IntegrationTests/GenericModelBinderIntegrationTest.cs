@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
-using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Xunit;
 
@@ -183,11 +182,11 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
                 {
                     // Binding Sources are opt-in. This model either didn't specify one or specified something
                     // incompatible so let other binders run.
-                    return TaskCache.CompletedTask;
+                    return Task.CompletedTask;
                 }
 
                 bindingContext.Result = ModelBindingResult.Success(new Address());
-                return TaskCache.CompletedTask;
+                return Task.CompletedTask;
             }
         }
 
@@ -217,10 +216,10 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.True(modelBindingResult.IsModelSet);
 
             var model = Assert.IsType<Address[]>(modelBindingResult.Model);
-            Assert.Equal(1, model.Length);
+            Assert.Single(model);
             Assert.NotNull(model[0]);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }
@@ -251,10 +250,10 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.True(modelBindingResult.IsModelSet);
 
             var model = Assert.IsType<Address[]>(modelBindingResult.Model);
-            Assert.Equal(1, model.Length);
+            Assert.Single(model);
             Assert.Null(model[0]);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }
@@ -379,7 +378,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(model);
             Assert.Empty(model);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }
@@ -502,7 +501,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(model);
             Assert.Empty(model);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }
@@ -634,7 +633,7 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             Assert.NotNull(model);
             Assert.Empty(model);
 
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
             Assert.Equal(0, modelState.ErrorCount);
             Assert.True(modelState.IsValid);
         }

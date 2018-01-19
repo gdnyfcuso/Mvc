@@ -2,14 +2,9 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
-using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.AspNetCore.Mvc.Razor;
-using Microsoft.AspNetCore.Mvc.Razor.Internal;
-using Microsoft.AspNetCore.Mvc.RazorPages.Internal;
-using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
-using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
@@ -22,7 +17,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
         public void GetDescriptors_DoesNotAddDescriptorsIfNoApplicationModelsAreDiscovered()
         {
             // Arrange
-            var applicationModelProvider = new TestPageApplicationModelProvider();
+            var applicationModelProvider = new TestPageRouteModelProvider();
             var provider = new PageActionDescriptorProvider(
                 new[] { applicationModelProvider },
                 GetAccessor<MvcOptions>(),
@@ -40,7 +35,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
         public void GetDescriptors_AddsDescriptorsForModelWithSelector()
         {
             // Arrange
-            var model = new PageApplicationModel("/Test.cshtml", "/Test")
+            var model = new PageRouteModel("/Test.cshtml", "/Test")
             {
                 Selectors =
                 {
@@ -53,7 +48,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
                     }
                 }
             };
-            var applicationModelProvider = new TestPageApplicationModelProvider(model);
+            var applicationModelProvider = new TestPageRouteModelProvider(model);
             var provider = new PageActionDescriptorProvider(
                 new[] { applicationModelProvider },
                 GetAccessor<MvcOptions>(),
@@ -72,18 +67,119 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
         }
 
         [Fact]
+        public void GetDescriptors_AddsDescriptorsForAreaPages()
+        {
+            // Arrange
+            var model = new PageRouteModel("/Test.cshtml", "/Test")
+            {
+                RouteValues =
+                {
+                    { "custom-key", "custom-value" },
+                },
+                Selectors =
+                {
+                    new SelectorModel
+                    {
+                        AttributeRouteModel = new AttributeRouteModel
+                        {
+                            Template = "/Test/{id:int?}",
+                        }
+                    }
+                }
+            };
+            var applicationModelProvider = new TestPageRouteModelProvider(model);
+            var provider = new PageActionDescriptorProvider(
+                new[] { applicationModelProvider },
+                GetAccessor<MvcOptions>(),
+                GetRazorPagesOptions());
+            var context = new ActionDescriptorProviderContext();
+
+            // Act
+            provider.OnProvidersExecuting(context);
+
+            // Assert
+            var result = Assert.Single(context.Results);
+            var descriptor = Assert.IsType<PageActionDescriptor>(result);
+            Assert.Equal(model.RelativePath, descriptor.RelativePath);
+            Assert.Collection(
+                descriptor.RouteValues.OrderBy(kvp => kvp.Key),
+                kvp =>
+                {
+                    Assert.Equal("custom-key", kvp.Key);
+                    Assert.Equal("custom-value", kvp.Value);
+                },
+                kvp =>
+                {
+                    Assert.Equal("page", kvp.Key);
+                    Assert.Equal("/Test", kvp.Value);
+                });
+        }
+
+        [Fact]
+        public void GetDescriptors_CopiesRouteValuesFromModel()
+        {
+            // Arrange
+            var model = new PageRouteModel("/Areas/Accounts/Pages/Test.cshtml", "/Test", "Accounts")
+            {
+                RouteValues =
+                {
+                    { "page", "/Test" },
+                    { "area", "Accounts" },
+                },
+                Selectors =
+                {
+                    new SelectorModel
+                    {
+                        AttributeRouteModel = new AttributeRouteModel
+                        {
+                            Template = "Accounts/Test/{id:int?}",
+                        }
+                    }
+                }
+            };
+            var applicationModelProvider = new TestPageRouteModelProvider(model);
+            var provider = new PageActionDescriptorProvider(
+                new[] { applicationModelProvider },
+                GetAccessor<MvcOptions>(),
+                GetRazorPagesOptions());
+            var context = new ActionDescriptorProviderContext();
+
+            // Act
+            provider.OnProvidersExecuting(context);
+
+            // Assert
+            var result = Assert.Single(context.Results);
+            var descriptor = Assert.IsType<PageActionDescriptor>(result);
+            Assert.Equal(model.RelativePath, descriptor.RelativePath);
+            Assert.Collection(
+                descriptor.RouteValues.OrderBy(kvp => kvp.Key),
+                kvp =>
+                {
+                    Assert.Equal("area", kvp.Key);
+                    Assert.Equal("Accounts", kvp.Value);
+                },
+                kvp =>
+                {
+                    Assert.Equal("page", kvp.Key);
+                    Assert.Equal("/Test", kvp.Value);
+                });
+            Assert.Equal("Accounts", descriptor.AreaName);
+            Assert.Equal("Accounts/Test/{id:int?}", descriptor.AttributeRouteInfo.Template);
+        }
+
+        [Fact]
         public void GetDescriptors_AddsActionDescriptorForEachSelector()
         {
             // Arrange
-            var applicationModelProvider = new TestPageApplicationModelProvider(
-                new PageApplicationModel("/base-path/Test.cshtml", "/base-path/Test")
+            var applicationModelProvider = new TestPageRouteModelProvider(
+                new PageRouteModel("/base-path/Test.cshtml", "/base-path/Test")
                 {
                     Selectors =
                     {
                         CreateSelectorModel("base-path/Test/Home")
                     }
                 },
-                new PageApplicationModel("/base-path/Index.cshtml", "/base-path/Index")
+                new PageRouteModel("/base-path/Index.cshtml", "/base-path/Index")
                 {
                     Selectors =
                     {
@@ -91,7 +187,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
                          CreateSelectorModel("base-path/"),
                     }
                 },
-                new PageApplicationModel("/base-path/Admin/Index.cshtml", "/base-path/Admin/Index")
+                new PageRouteModel("/base-path/Admin/Index.cshtml", "/base-path/Admin/Index")
                 {
                     Selectors =
                     {
@@ -99,7 +195,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
                          CreateSelectorModel("base-path/Admin"),
                     }
                 },
-                new PageApplicationModel("/base-path/Admin/User.cshtml", "/base-path/Admin/User")
+                new PageRouteModel("/base-path/Admin/User.cshtml", "/base-path/Admin/User")
                 {
                     Selectors =
                     {
@@ -143,8 +239,8 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
         public void GetDescriptors_AddsMultipleDescriptorsForPageWithMultipleSelectors()
         {
             // Arrange
-            var applicationModelProvider = new TestPageApplicationModelProvider(
-                new PageApplicationModel("/Catalog/Details/Index.cshtml", "/Catalog/Details/Index")
+            var applicationModelProvider = new TestPageRouteModelProvider(
+                new PageRouteModel("/Catalog/Details/Index.cshtml", "/Catalog/Details/Index")
                 {
                     Selectors =
                     {
@@ -180,139 +276,9 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
                 });
         }
 
-        [Fact]
-        public void GetDescriptors_ImplicitFilters()
+        private static PageRouteModel CreateModel()
         {
-            // Arrange
-            var options = new MvcOptions();
-            var applicationModelProvider = new TestPageApplicationModelProvider(CreateModel());
-            var provider = new PageActionDescriptorProvider(
-                new[] { applicationModelProvider },
-                GetAccessor(options),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Collection(
-                descriptor.FilterDescriptors,
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<PageSaveTempDataPropertyFilterFactory>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<AutoValidateAntiforgeryTokenAttribute>(filterDescriptor.Filter);
-                });
-        }
-
-        [Fact]
-        public void GetDescriptors_AddsGlobalFilters()
-        {
-            // Arrange
-            var filter1 = Mock.Of<IFilterMetadata>();
-            var filter2 = Mock.Of<IFilterMetadata>();
-            var options = new MvcOptions();
-            options.Filters.Add(filter1);
-            options.Filters.Add(filter2);
-            var applicationModelProvider = new TestPageApplicationModelProvider(CreateModel());
-            var provider = new PageActionDescriptorProvider(
-                new[] { applicationModelProvider },
-                GetAccessor(options),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Collection(
-                descriptor.FilterDescriptors,
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Global, filterDescriptor.Scope);
-                    Assert.Same(filter1, filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Global, filterDescriptor.Scope);
-                    Assert.Same(filter2, filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<PageSaveTempDataPropertyFilterFactory>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<AutoValidateAntiforgeryTokenAttribute>(filterDescriptor.Filter);
-                });
-        }
-
-        [Fact]
-        public void GetDescriptors_AddsFiltersAddedByConvention()
-        {
-            // Arrange
-            var globalFilter = Mock.Of<IFilterMetadata>();
-            var localFilter = Mock.Of<IFilterMetadata>();
-            var options = new MvcOptions();
-            options.Filters.Add(globalFilter);
-            var convention = new Mock<IPageApplicationModelConvention>();
-            convention.Setup(c => c.Apply(It.IsAny<PageApplicationModel>()))
-                .Callback((PageApplicationModel model) =>
-                {
-                    model.Filters.Add(localFilter);
-                });
-            var razorOptions = GetRazorPagesOptions();
-            razorOptions.Value.Conventions.Add(convention.Object);
-            var applicationModelProvider = new TestPageApplicationModelProvider(CreateModel());
-            var provider = new PageActionDescriptorProvider(
-                new[] { applicationModelProvider },
-                GetAccessor(options),
-                razorOptions);
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Collection(descriptor.FilterDescriptors,
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Global, filterDescriptor.Scope);
-                    Assert.Same(globalFilter, filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<PageSaveTempDataPropertyFilterFactory>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<AutoValidateAntiforgeryTokenAttribute>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.Same(localFilter, filterDescriptor.Filter);
-                });
-        }
-
-        private static PageApplicationModel CreateModel()
-        {
-            return new PageApplicationModel("/Home.cshtml", "/Home")
+            return new PageRouteModel("/Home.cshtml", "/Home")
             {
                 Selectors =
                 {
@@ -337,41 +303,30 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
 
         private static IOptions<RazorPagesOptions> GetRazorPagesOptions()
         {
-            return new OptionsManager<RazorPagesOptions>(new[] { new RazorPagesOptionsSetup() });
+            return Options.Create(new RazorPagesOptions());
         }
 
-        private static RazorProjectItem GetProjectItem(string basePath, string path, string content)
+        private class TestPageRouteModelProvider : IPageRouteModelProvider
         {
-            var testFileInfo = new TestFileInfo
+            private readonly PageRouteModel[] _models;
+
+            public TestPageRouteModelProvider(params PageRouteModel[] models)
             {
-                Content = content,
-            };
-
-            return new DefaultRazorProjectItem(testFileInfo, basePath, path);
-        }
-
-        private class TestPageApplicationModelProvider : IPageApplicationModelProvider
-        {
-            private readonly PageApplicationModel[] _models;
-
-            public TestPageApplicationModelProvider(params PageApplicationModel[] models)
-            {
-                _models = models ?? Array.Empty<PageApplicationModel>();
+                _models = models ?? Array.Empty<PageRouteModel>();
             }
 
-            public int Order => 0;
+            public int Order => -1000;
 
-            public void OnProvidersExecuted(PageApplicationModelProviderContext context)
+            public void OnProvidersExecuted(PageRouteModelProviderContext context)
             {
             }
 
-            public void OnProvidersExecuting(PageApplicationModelProviderContext context)
+            public void OnProvidersExecuting(PageRouteModelProviderContext context)
             {
                 foreach (var model in _models)
                 {
-                    context.Results.Add(model);
+                    context.RouteModels.Add(model);
                 }
-
             }
         }
     }

@@ -40,7 +40,7 @@ namespace ControllersFromServicesWebSite
 
             services.AddTransient<QueryValueService>();
             services.AddTransient<ValueService>();
-            services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+            services.AddHttpContextAccessor();
         }
 
         private class TypesPart : ApplicationPart, IApplicationPartTypeProvider
@@ -57,8 +57,6 @@ namespace ControllersFromServicesWebSite
 
         public void Configure(IApplicationBuilder app)
         {
-            app.UseCultureReplacer();
-
             app.UseMvc(routes =>
             {
                 routes.MapRoute("default", "{controller}/{action}/{id}");

@@ -50,7 +50,9 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             // Model
             var boundPerson = Assert.IsType<Person>(modelBindingResult.Model);
             Assert.NotNull(boundPerson);
-            Assert.NotNull(boundPerson.Token);
+            Assert.False(boundPerson.Token.IsCancellationRequested);
+            testContext.HttpContext.Abort();
+            Assert.True(boundPerson.Token.IsCancellationRequested);
 
             // ModelState
             Assert.True(modelState.IsValid);
@@ -84,11 +86,13 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
             // Model
             var boundPerson = Assert.IsType<Person>(modelBindingResult.Model);
             Assert.NotNull(boundPerson);
-            Assert.NotNull(boundPerson.Token);
+            Assert.False(boundPerson.Token.IsCancellationRequested);
+            testContext.HttpContext.Abort();
+            Assert.True(boundPerson.Token.IsCancellationRequested);
 
             // ModelState
             Assert.True(modelState.IsValid);
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
         }
 
         [Fact]
@@ -120,11 +124,13 @@ namespace Microsoft.AspNetCore.Mvc.IntegrationTests
 
             // Model
             var token = Assert.IsType<CancellationToken>(modelBindingResult.Model);
-            Assert.NotNull(token);
+            Assert.False(token.IsCancellationRequested);
+            testContext.HttpContext.Abort();
+            Assert.True(token.IsCancellationRequested);
 
             // ModelState
             Assert.True(modelState.IsValid);
-            Assert.Equal(0, modelState.Count);
+            Assert.Empty(modelState);
         }
     }
 }

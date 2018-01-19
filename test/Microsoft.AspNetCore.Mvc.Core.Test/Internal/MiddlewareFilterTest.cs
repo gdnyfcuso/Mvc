@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Routing;
@@ -249,15 +248,15 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             if (actionThrows)
             {
-                actionDescriptor.MethodInfo = typeof(ControllerActionInvokerTest).GetMethod(
-                    nameof(ControllerActionInvokerTest.ThrowingActionMethod));
+                actionDescriptor.MethodInfo = typeof(ControllerActionInvokerTest.TestController).GetMethod(
+                    nameof(ControllerActionInvokerTest.TestController.ThrowingActionMethod));
             }
             else
             {
-                actionDescriptor.MethodInfo = typeof(ControllerActionInvokerTest).GetMethod(
-                    nameof(ControllerActionInvokerTest.ActionMethod));
+                actionDescriptor.MethodInfo = typeof(ControllerActionInvokerTest.TestController).GetMethod(
+                    nameof(ControllerActionInvokerTest.TestController.ActionMethod));
             }
-            actionDescriptor.ControllerTypeInfo = typeof(ControllerActionInvokerTest).GetTypeInfo();
+            actionDescriptor.ControllerTypeInfo = typeof(ControllerActionInvokerTest.TestController).GetTypeInfo();
 
             return CreateInvoker(filters, actionDescriptor, _controller);
         }
@@ -284,8 +283,6 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             var invoker = new TestControllerActionInvoker(
                 filters,
                 new MockControllerFactory(controller ?? this),
-                new TestParameterBinder(actionParameters: null),
-                TestModelMetadataProvider.CreateDefaultProvider(),
                 new NullLoggerFactory().CreateLogger<ControllerActionInvoker>(),
                 diagnosticSource,
                 actionContext,
@@ -342,7 +339,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             return services;
         }
 
-        private class MockControllerFactory : IControllerFactory
+        private class MockControllerFactory
         {
             private object _controller;
 
@@ -380,37 +377,22 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             }
         }
 
-        private static ControllerActionInvokerCache CreateFilterCache(IFilterProvider[] filterProviders = null)
-        {
-            var descriptorProvider = new ActionDescriptorCollectionProvider(
-                Enumerable.Empty<IActionDescriptorProvider>(),
-                Enumerable.Empty<IActionDescriptorChangeProvider>());
-            return new ControllerActionInvokerCache(
-                descriptorProvider,
-                filterProviders.AsEnumerable() ?? new List<IFilterProvider>());
-        }
-
         private class TestControllerActionInvoker : ControllerActionInvoker
         {
             public TestControllerActionInvoker(
                 IFilterMetadata[] filters,
                 MockControllerFactory controllerFactory,
-                ParameterBinder parameterBinder,
-                IModelMetadataProvider modelMetadataProvider,
                 ILogger logger,
                 DiagnosticSource diagnosticSource,
                 ActionContext actionContext,
                 IReadOnlyList<IValueProviderFactory> valueProviderFactories,
                 int maxAllowedErrorsInModelState)
                 : base(
-                      controllerFactory,
-                      parameterBinder,
-                      modelMetadataProvider,
                       logger,
                       diagnosticSource,
                       CreatControllerContext(actionContext, valueProviderFactories, maxAllowedErrorsInModelState),
-                      filters,
-                      CreateExecutor((ControllerActionDescriptor)actionContext.ActionDescriptor))
+                      CreateCacheEntry((ControllerActionDescriptor)actionContext.ActionDescriptor, controllerFactory),
+                      filters)
             {
                 ControllerFactory = controllerFactory;
             }
@@ -443,6 +425,20 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
                 return controllerContext;
             }
+
+            private static ControllerActionInvokerCacheEntry CreateCacheEntry(
+                ControllerActionDescriptor actionDescriptor,
+                MockControllerFactory controllerFactory)
+            {
+                var objectMethodExecutor = CreateExecutor(actionDescriptor);
+                return new ControllerActionInvokerCacheEntry(
+                    new FilterItem[0],
+                    controllerFactory.CreateController,
+                    controllerFactory.ReleaseController,
+                    null,
+                    objectMethodExecutor,
+                    ActionMethodExecutor.GetExecutor(objectMethodExecutor));
+            }
         }
 
         private class TestParameterBinder : ParameterBinder
@@ -452,7 +448,8 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 : base(
                     new EmptyModelMetadataProvider(),
                     TestModelBinderFactory.CreateDefault(),
-                    Mock.Of<IObjectModelValidator>())
+                    Mock.Of<IModelValidatorProvider>(),
+                    NullLoggerFactory.Instance)
             {
                 _actionParameters = actionParameters;
             }
@@ -481,7 +478,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                     arguments.Add(entry.Key, entry.Value);
                 }
 
-                return TaskCache.CompletedTask;
+                return Task.CompletedTask;
             }
         }
 

@@ -77,11 +77,11 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
             var anonymous = new { foo = "bar" };
 
             // Act
-            var helpers1 = HtmlAttributePropertyHelper.GetProperties(anonymous);
-            var helpers2 = HtmlAttributePropertyHelper.GetProperties(anonymous);
+            var helpers1 = HtmlAttributePropertyHelper.GetProperties(anonymous.GetType());
+            var helpers2 = HtmlAttributePropertyHelper.GetProperties(anonymous.GetType());
 
             // Assert
-            Assert.Equal(1, helpers1.Length);
+            Assert.Single(helpers1);
             Assert.Same(helpers1, helpers2);
             Assert.Same(helpers1[0], helpers2[0]);
         }
@@ -93,12 +93,12 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures.Internal
             var anonymous = new { bar_baz1 = "foo" };
 
             // Act
-            var helpers1 = HtmlAttributePropertyHelper.GetProperties(anonymous);
-            var helpers2 = PropertyHelper.GetProperties(anonymous);
+            var helpers1 = HtmlAttributePropertyHelper.GetProperties(anonymous.GetType());
+            var helpers2 = PropertyHelper.GetProperties(anonymous.GetType());
 
             // Assert
-            Assert.Equal(1, helpers1.Length);
-            Assert.Equal(1, helpers2.Length);
+            Assert.Single(helpers1);
+            Assert.Single(helpers2);
 
             Assert.NotEqual<PropertyHelper[]>(helpers1, helpers2);
             Assert.NotEqual<PropertyHelper>(helpers1[0], helpers2[0]);

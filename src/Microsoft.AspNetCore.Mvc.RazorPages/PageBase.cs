@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Mvc.Razor;
-using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,8 +23,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
     /// <summary>
     /// A base class for a Razor page.
     /// </summary>
-    [PagesBaseClass]
-    public abstract class PageBase : RazorPageBase, IRazorPage
+    public abstract class PageBase : RazorPageBase
     {
         private IObjectModelValidator _objectValidator;
         private IModelMetadataProvider _metadataProvider;
@@ -37,14 +35,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         public PageContext PageContext { get; set; }
 
         /// <inheritdoc />
-        public override ViewContext ViewContext
-        {
-            get => PageContext;
-            set
-            {
-                PageContext = (PageContext)value;
-            }
-        }
+        public override ViewContext ViewContext { get; set; }
 
         /// <summary>
         /// Gets the <see cref="Http.HttpContext"/>.
@@ -64,13 +55,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         /// <summary>
         /// Gets the <see cref="AspNetCore.Routing.RouteData"/> for the executing action.
         /// </summary>
-        public RouteData RouteData
-        {
-            get
-            {
-                return PageContext.RouteData;
-            }
-        }
+        public RouteData RouteData => PageContext.RouteData;
 
         /// <summary>
         /// Gets the <see cref="ModelStateDictionary"/>.
@@ -119,6 +104,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         /// <inheritdoc />
         public override void EnsureRenderedBodyOrSections()
         {
+            // This will never be called by MVC. MVC only calls this method on layout pages, and a Page can never be a layout page.
             throw new NotSupportedException();
         }
 
@@ -157,6 +143,39 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
                         path = Path,
                     });
             }
+        }
+
+        /// <summary>
+        /// Creates a <see cref="BadRequestResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+        /// </summary>
+        /// <returns>The created <see cref="BadRequestResult"/> for the response.</returns>
+        [NonAction]
+        public virtual BadRequestResult BadRequest()
+            => new BadRequestResult();
+
+        /// <summary>
+        /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+        /// </summary>
+        /// <param name="error">An error object to be returned to the client.</param>
+        /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
+        [NonAction]
+        public virtual BadRequestObjectResult BadRequest(object error)
+            => new BadRequestObjectResult(error);
+
+        /// <summary>
+        /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+        /// </summary>
+        /// <param name="modelState">The <see cref="ModelStateDictionary" /> containing errors to be returned to the client.</param>
+        /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
+        [NonAction]
+        public virtual BadRequestObjectResult BadRequest(ModelStateDictionary modelState)
+        {
+            if (modelState == null)
+            {
+                throw new ArgumentNullException(nameof(modelState));
+            }
+
+            return new BadRequestObjectResult(modelState);
         }
 
         /// <summary>
@@ -199,7 +218,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
             => new ChallengeResult(properties);
 
         /// <summary>
-        /// Creates a <see cref="ChallengeResult"/> with the specified specified authentication schemes and
+        /// Creates a <see cref="ChallengeResult"/> with the specified authentication schemes and
         /// <paramref name="properties" />.
         /// </summary>
         /// <param name="properties"><see cref="AuthenticationProperties"/> used to perform the authentication
@@ -310,7 +329,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
 
         /// <summary>
         /// Creates a <see cref="ForbidResult"/> (<see cref="StatusCodes.Status403Forbidden"/> by default) with the 
-        /// specified specified authentication schemes and <paramref name="properties" />.
+        /// specified authentication schemes and <paramref name="properties" />.
         /// </summary>
         /// <param name="properties"><see cref="AuthenticationProperties"/> used to perform the authentication
         /// challenge.</param>
@@ -502,7 +521,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         /// Returning a <see cref="PageResult"/> from a page handler method is equivalent to returning void.
         /// The view associated with the page will be executed.
         /// </remarks>
-        public virtual PageResult Page() => new PageResult(this);
+        public virtual PageResult Page() => new PageResult();
 
         /// <summary>
         /// Creates a <see cref="RedirectResult"/> object that redirects to the specified <paramref name="url"/>.
@@ -986,7 +1005,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         /// <param name="pageHandler">The page handler to redirect to.</param>
         /// <returns>The <see cref="RedirectToPageResult"/>.</returns>
         public virtual RedirectToPageResult RedirectToPage(string pageName, string pageHandler)
-            => RedirectToPage(pageName, routeValues: null);
+            => RedirectToPage(pageName, pageHandler, routeValues: null, fragment: null);
 
         /// <summary>
         /// Redirects (<see cref="StatusCodes.Status302Found"/>) to the specified <paramref name="pageName"/>
@@ -1080,7 +1099,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
         /// <param name="routeValues">The parameters for a route.</param>
         /// <param name="fragment">The fragment to add to the URL.</param>
         /// <returns>The <see cref="RedirectToPageResult"/> with <see cref="RedirectToPageResult.Permanent"/> set.</returns>
-        protected RedirectToPageResult RedirectToPagePermanent(string pageName, string pageHandler, object routeValues, string fragment)
+        public virtual RedirectToPageResult RedirectToPagePermanent(string pageName, string pageHandler, object routeValues, string fragment)
             => new RedirectToPageResult(pageName, pageHandler, routeValues, permanent: true, fragment: fragment);
 
         /// <summary>
@@ -1143,7 +1162,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
             => new SignInResult(authenticationScheme, principal);
 
         /// <summary>
-        /// Creates a <see cref="SignInResult"/> with the specified specified authentication scheme and
+        /// Creates a <see cref="SignInResult"/> with the specified authentication scheme and
         /// <paramref name="properties" />.
         /// </summary>
         /// <param name="principal">The <see cref="ClaimsPrincipal"/> containing the user claims.</param>
@@ -1165,7 +1184,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages
             => new SignOutResult(authenticationSchemes);
 
         /// <summary>
-        /// Creates a <see cref="SignOutResult"/> with the specified specified authentication schemes and
+        /// Creates a <see cref="SignOutResult"/> with the specified authentication schemes and
         /// <paramref name="properties" />.
         /// </summary>
         /// <param name="properties"><see cref="AuthenticationProperties"/> used to perform the sign-out operation.</param>

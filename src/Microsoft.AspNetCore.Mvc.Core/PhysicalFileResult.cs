@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Net.Http.Headers;
@@ -54,10 +55,7 @@ namespace Microsoft.AspNetCore.Mvc
         /// </summary>
         public string FileName
         {
-            get
-            {
-                return _fileName;
-            }
+            get => _fileName;
             set
             {
                 if (value == null)
@@ -77,7 +75,7 @@ namespace Microsoft.AspNetCore.Mvc
                 throw new ArgumentNullException(nameof(context));
             }
 
-            var executor = context.HttpContext.RequestServices.GetRequiredService<PhysicalFileResultExecutor>();
+            var executor = context.HttpContext.RequestServices.GetRequiredService<IActionResultExecutor<PhysicalFileResult>>();
             return executor.ExecuteAsync(context, this);
         }
     }

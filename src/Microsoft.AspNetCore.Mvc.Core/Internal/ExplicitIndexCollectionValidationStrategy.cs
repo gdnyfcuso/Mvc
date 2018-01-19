@@ -10,11 +10,11 @@ using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 namespace Microsoft.AspNetCore.Mvc.Internal
 {
     /// <summary>
-    /// An implementation of <see cref="IValidationStrategy"/> for a collection bound using 'explict indexing'
+    /// An implementation of <see cref="IValidationStrategy"/> for a collection bound using 'explicit indexing'
     /// style keys.
     /// </summary>
     /// <remarks>
-    /// This implemenation handles cases like:
+    /// This implementation handles cases like:
     /// <example>
     ///     Model: IList&lt;Student&gt; 
     ///     Query String: ?students.index=Joey,Katherine&amp;students[Joey].Age=8&amp;students[Katherine].Age=9
@@ -82,21 +82,9 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 _enumerator = enumerator;
             }
 
-            public ValidationEntry Current
-            {
-                get
-                {
-                    return _entry;
-                }
-            }
+            public ValidationEntry Current => _entry;
 
-            object IEnumerator.Current
-            {
-                get
-                {
-                    return Current;
-                }
-            }
+            object IEnumerator.Current => Current;
 
             public bool MoveNext()
             {

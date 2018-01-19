@@ -164,6 +164,34 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
         internal static string FormatFormActionTagHelper_CannotOverrideFormAction(object p0, object p1, object p2, object p3, object p4, object p5, object p6, object p7, object p8, object p9)
             => string.Format(CultureInfo.CurrentCulture, GetString("FormActionTagHelper_CannotOverrideFormAction"), p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
 
+        /// <summary>
+        /// Value cannot contain HTML space characters.
+        /// </summary>
+        internal static string ArgumentCannotContainHtmlSpace
+        {
+            get => GetString("ArgumentCannotContainHtmlSpace");
+        }
+
+        /// <summary>
+        /// Value cannot contain HTML space characters.
+        /// </summary>
+        internal static string FormatArgumentCannotContainHtmlSpace()
+            => GetString("ArgumentCannotContainHtmlSpace");
+
+        /// <summary>
+        /// The partial view '{0}' was not found. The following locations were searched:{1}
+        /// </summary>
+        internal static string ViewEngine_PartialViewNotFound
+        {
+            get => GetString("ViewEngine_PartialViewNotFound");
+        }
+
+        /// <summary>
+        /// The partial view '{0}' was not found. The following locations were searched:{1}
+        /// </summary>
+        internal static string FormatViewEngine_PartialViewNotFound(object p0, object p1)
+            => string.Format(CultureInfo.CurrentCulture, GetString("ViewEngine_PartialViewNotFound"), p0, p1);
+
         private static string GetString(string name, params string[] formatterNames)
         {
             var value = _resourceManager.GetString(name);

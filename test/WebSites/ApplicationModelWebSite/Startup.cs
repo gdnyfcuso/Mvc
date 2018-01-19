@@ -18,15 +18,18 @@ namespace ApplicationModelWebSite
                 options.Conventions.Add(new ApplicationDescription("Common Application Description"));
                 options.Conventions.Add(new ControllerLicenseConvention());
                 options.Conventions.Add(new FromHeaderConvention());
+                options.Conventions.Add(new MultipleAreasControllerConvention());
+                options.Conventions.Add(new CloneActionConvention());
             });
         }
 
         public void Configure(IApplicationBuilder app)
         {
-            app.UseCultureReplacer();
-
             app.UseMvc(routes =>
             {
+                routes.MapRoute(name: "areaRoute",
+                  template: "{area:exists}/{controller=Home}/{action=Index}");
+
                 routes.MapRoute(
                     name: "default",
                     template: "{controller}/{action}/{id?}");

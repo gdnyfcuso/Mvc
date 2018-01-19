@@ -20,6 +20,17 @@ namespace Microsoft.AspNetCore.Mvc.Razor
         private readonly Dictionary<string, TestFileChangeToken> _fileTriggers =
             new Dictionary<string, TestFileChangeToken>(StringComparer.Ordinal);
 
+        public TestFileProvider() : this(string.Empty)
+        {
+        }
+
+        public TestFileProvider(string root)
+        {
+            Root = root;
+        }
+
+        public string Root { get; }
+
         public virtual IDirectoryContents GetDirectoryContents(string subpath)
         {
             if (_directoryContentsLookup.TryGetValue(subpath, out var value))
@@ -35,7 +46,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor
             var fileInfo = new TestFileInfo
             {
                 Content = contents,
-                PhysicalPath = path,
+                PhysicalPath = Path.Combine(Root, path),
                 Name = Path.GetFileName(path),
                 LastModified = DateTime.UtcNow,
             };
@@ -76,7 +87,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor
 
         public virtual TestFileChangeToken AddChangeToken(string filter)
         {
-            var changeToken = new TestFileChangeToken();
+            var changeToken = new TestFileChangeToken(filter);
             _fileTriggers[filter] = changeToken;
 
             return changeToken;
@@ -84,10 +95,9 @@ namespace Microsoft.AspNetCore.Mvc.Razor
 
         public virtual IChangeToken Watch(string filter)
         {
-            TestFileChangeToken changeToken;
-            if (!_fileTriggers.TryGetValue(filter, out changeToken) || changeToken.HasChanged)
+            if (!_fileTriggers.TryGetValue(filter, out var changeToken) || changeToken.HasChanged)
             {
-                changeToken = new TestFileChangeToken();
+                changeToken = new TestFileChangeToken(filter);
                 _fileTriggers[filter] = changeToken;
             }
 

@@ -99,10 +99,9 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Internal
 
             var current = startIndex;
 
-            char c;
             while (current < input.Length)
             {
-                c = input[current];
+                var c = input[current];
 
                 if ((c == SP) || (c == Tab))
                 {
@@ -153,7 +152,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Internal
                 return HttpParseResult.NotParsed;
             }
 
-            // Quoted-char has 2 characters. Check wheter there are 2 chars left ('\' + char)
+            // Quoted-char has 2 characters. Check whether there are 2 chars left ('\' + char)
             // If so, check whether the character is in the range 0-127. If not, it's an invalid value.
             if ((startIndex + 2 > input.Length) || (input[startIndex + 1] > 127))
             {
@@ -202,9 +201,8 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Internal
             {
                 // Only check whether we have a quoted char, if we have at least 3 characters left to read (i.e.
                 // quoted char + closing char). Otherwise the closing char may be considered part of the quoted char.
-                var quotedPairLength = 0;
                 if ((current + 2 < input.Length) &&
-                    (GetQuotedPairLength(input, current, out quotedPairLength) == HttpParseResult.Parsed))
+                    (GetQuotedPairLength(input, current, out var quotedPairLength) == HttpParseResult.Parsed))
                 {
                     // We ignore invalid quoted-pairs. Invalid quoted-pairs may mean that it looked like a quoted pair,
                     // but we actually have a quoted-string: e.g. "\ü" ('\' followed by a char >127 - quoted-pair only
@@ -225,9 +223,14 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Internal
                             return HttpParseResult.InvalidFormat;
                         }
 
-                        var nestedLength = 0;
-                        HttpParseResult nestedResult = GetExpressionLength(input, current, openChar, closeChar,
-                            supportsNesting, ref nestedCount, out nestedLength);
+                        var nestedResult = GetExpressionLength(
+                            input,
+                            current,
+                            openChar,
+                            closeChar,
+                            supportsNesting,
+                            ref nestedCount,
+                            out var nestedLength);
 
                         switch (nestedResult)
                         {

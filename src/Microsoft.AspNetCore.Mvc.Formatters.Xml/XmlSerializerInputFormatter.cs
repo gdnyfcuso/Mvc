@@ -4,14 +4,18 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
+using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.AspNetCore.Mvc.Formatters.Xml;
 using Microsoft.AspNetCore.Mvc.Formatters.Xml.Internal;
 using Microsoft.AspNetCore.Mvc.Internal;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace Microsoft.AspNetCore.Mvc.Formatters
 {
@@ -19,14 +23,17 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
     /// This class handles deserialization of input XML data
     /// to strongly-typed objects using <see cref="XmlSerializer"/>
     /// </summary>
-    public class XmlSerializerInputFormatter : TextInputFormatter
+    public class XmlSerializerInputFormatter : TextInputFormatter, IInputFormatterExceptionPolicy
     {
-        private ConcurrentDictionary<Type, object> _serializerCache = new ConcurrentDictionary<Type, object>();
+        private readonly ConcurrentDictionary<Type, object> _serializerCache = new ConcurrentDictionary<Type, object>();
         private readonly XmlDictionaryReaderQuotas _readerQuotas = FormattingUtilities.GetDefaultXmlReaderQuotas();
+        private readonly bool _suppressInputFormatterBuffering;
+        private readonly MvcOptions _options;
 
         /// <summary>
         /// Initializes a new instance of XmlSerializerInputFormatter.
         /// </summary>
+        [Obsolete("This constructor is obsolete and will be removed in a future version.")]
         public XmlSerializerInputFormatter()
         {
             SupportedEncodings.Add(UTF8EncodingWithoutBOM);
@@ -38,6 +45,29 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
 
             WrapperProviderFactories = new List<IWrapperProviderFactory>();
             WrapperProviderFactories.Add(new SerializableErrorWrapperProviderFactory());
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="XmlSerializerInputFormatter"/>.
+        /// </summary>
+        /// <param name="suppressInputFormatterBuffering">Flag to buffer entire request body before deserializing it.</param>
+        [Obsolete("This constructor is obsolete and will be removed in a future version.")]
+        public XmlSerializerInputFormatter(bool suppressInputFormatterBuffering)
+            : this()
+        {
+            _suppressInputFormatterBuffering = suppressInputFormatterBuffering;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="XmlSerializerInputFormatter"/>.
+        /// </summary>
+        /// <param name="options">The <see cref="MvcOptions"/>.</param>
+        public XmlSerializerInputFormatter(MvcOptions options)
+#pragma warning disable CS0618
+            : this()
+#pragma warning restore CS0618
+        {
+            _options = options;
         }
 
         /// <summary>
@@ -59,13 +89,23 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
         /// The quotas include - DefaultMaxDepth, DefaultMaxStringContentLength, DefaultMaxArrayLength,
         /// DefaultMaxBytesPerRead, DefaultMaxNameTableCharCount
         /// </summary>
-        public XmlDictionaryReaderQuotas XmlDictionaryReaderQuotas
+        public XmlDictionaryReaderQuotas XmlDictionaryReaderQuotas => _readerQuotas;
+
+        /// <inheritdoc />
+        public virtual InputFormatterExceptionPolicy ExceptionPolicy
         {
-            get { return _readerQuotas; }
+            get
+            {
+                if (GetType() == typeof(XmlSerializerInputFormatter))
+                {
+                    return InputFormatterExceptionPolicy.MalformedInputExceptions;
+                }
+                return InputFormatterExceptionPolicy.AllExceptions;
+            }
         }
 
         /// <inheritdoc />
-        public override Task<InputFormatterResult> ReadRequestBodyAsync(
+        public override async Task<InputFormatterResult> ReadRequestBodyAsync(
             InputFormatterContext context,
             Encoding encoding)
         {
@@ -80,25 +120,47 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
             }
 
             var request = context.HttpContext.Request;
-            using (var xmlReader = CreateXmlReader(new NonDisposableStream(request.Body), encoding))
+
+            var suppressInputFormatterBuffering = _options?.SuppressInputFormatterBuffering ?? _suppressInputFormatterBuffering;
+
+            if (!request.Body.CanSeek && !suppressInputFormatterBuffering)
             {
-                var type = GetSerializableType(context.ModelType);
+                // XmlSerializer does synchronous reads. In order to avoid blocking on the stream, we asynchronously 
+                // read everything into a buffer, and then seek back to the beginning. 
+                BufferingHelper.EnableRewind(request);
+                Debug.Assert(request.Body.CanSeek);
 
-                var serializer = GetCachedSerializer(type);
+                await request.Body.DrainAsync(CancellationToken.None);
+                request.Body.Seek(0L, SeekOrigin.Begin);
+            }
 
-                var deserializedObject = serializer.Deserialize(xmlReader);
-
-                // Unwrap only if the original type was wrapped.
-                if (type != context.ModelType)
+            try
+            {
+                using (var xmlReader = CreateXmlReader(new NonDisposableStream(request.Body), encoding))
                 {
-                    var unwrappable = deserializedObject as IUnwrappable;
-                    if (unwrappable != null)
-                    {
-                        deserializedObject = unwrappable.Unwrap(declaredType: context.ModelType);
-                    }
-                }
+                    var type = GetSerializableType(context.ModelType);
 
-                return InputFormatterResult.SuccessAsync(deserializedObject);
+                    var serializer = GetCachedSerializer(type);
+
+                    var deserializedObject = serializer.Deserialize(xmlReader);
+
+                    // Unwrap only if the original type was wrapped.
+                    if (type != context.ModelType)
+                    {
+                        if (deserializedObject is IUnwrappable unwrappable)
+                        {
+                            deserializedObject = unwrappable.Unwrap(declaredType: context.ModelType);
+                        }
+                    }
+
+                    return InputFormatterResult.Success(deserializedObject);
+                }
+            }
+            // XmlSerializer wraps actual exceptions (like FormatException or XmlException) into an InvalidOperationException
+            // https://github.com/dotnet/corefx/blob/master/src/System.Private.Xml/src/System/Xml/Serialization/XmlSerializer.cs#L652
+            catch (InvalidOperationException exception) when (exception.InnerException is FormatException || exception.InnerException is XmlException)
+            {
+                throw new InputFormatterException(Resources.ErrorDeserializingInputData, exception);
             }
         }
 
@@ -182,8 +244,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
                 throw new ArgumentNullException(nameof(type));
             }
 
-            object serializer;
-            if (!_serializerCache.TryGetValue(type, out serializer))
+            if (!_serializerCache.TryGetValue(type, out var serializer))
             {
                 serializer = CreateSerializer(type);
                 if (serializer != null)

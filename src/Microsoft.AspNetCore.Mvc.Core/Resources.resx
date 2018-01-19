@@ -319,14 +319,23 @@
   <data name="ModelState_AttemptedValueIsInvalid" xml:space="preserve">
     <value>The value '{0}' is not valid for {1}.</value>
   </data>
+  <data name="ModelState_NonPropertyAttemptedValueIsInvalid" xml:space="preserve">
+    <value>The value '{0}' is not valid.</value>
+  </data>
   <data name="ModelState_UnknownValueIsInvalid" xml:space="preserve">
     <value>The supplied value is invalid for {0}.</value>
+  </data>
+  <data name="ModelState_NonPropertyUnknownValueIsInvalid" xml:space="preserve">
+    <value>The supplied value is invalid.</value>
   </data>
   <data name="HtmlGeneration_ValueIsInvalid" xml:space="preserve">
     <value>The value '{0}' is invalid.</value>
   </data>
   <data name="HtmlGeneration_ValueMustBeNumber" xml:space="preserve">
     <value>The field {0} must be a number.</value>
+  </data>
+  <data name="HtmlGeneration_NonPropertyValueMustBeNumber" xml:space="preserve">
+    <value>The field must be a number.</value>
   </data>
   <data name="TextInputFormatter_SupportedEncodingsMustNotBeEmpty" xml:space="preserve">
     <value>The list of '{0}' must not be empty. Add at least one supported encoding.</value>
@@ -339,9 +348,6 @@
   </data>
   <data name="Formatter_NoMediaTypes" xml:space="preserve">
     <value>No media types found in '{0}.{1}'. Add at least one media type to the list of supported media types.</value>
-  </data>
-  <data name="MustSpecifyAtLeastOneAuthenticationScheme" xml:space="preserve">
-    <value>At least one authentication scheme must be specified.</value>
   </data>
   <data name="CouldNotCreateIModelBinder" xml:space="preserve">
     <value>Could not create a model binder for model object of type '{0}'.</value>
@@ -405,5 +411,14 @@
   </data>
   <data name="UrlHelper_RelativePagePathIsNotSupported" xml:space="preserve">
     <value>The relative page path '{0}' can only be used while executing a Razor Page. Specify a root relative path with a leading '/' to generate a URL outside of a Razor Page.</value>
+  </data>
+  <data name="ValidationProblemDescription_Title" xml:space="preserve">
+    <value>One or more validation errors occured.</value>
+  </data>
+  <data name="ApiController_AttributeRouteRequired" xml:space="preserve">
+    <value>Action methods on controllers annotated with {0} must have an attribute route.</value>
+  </data>
+  <data name="VirtualFileResultExecutor_NoFileProviderConfigured" xml:space="preserve">
+    <value>No file provider has been configured to process the supplied file.</value>
   </data>
 </root>

@@ -6,10 +6,12 @@ using System.IO;
 using System.Threading;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Binders;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Microsoft.AspNetCore.Mvc.Internal
@@ -22,8 +24,9 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         private readonly IHttpRequestStreamReaderFactory _readerFactory;
         private readonly ILoggerFactory _loggerFactory;
 
+        // Used in tests
         public MvcCoreMvcOptionsSetup(IHttpRequestStreamReaderFactory readerFactory)
-            : this(readerFactory, loggerFactory: null)
+            : this(readerFactory, NullLoggerFactory.Instance)
         {
         }
 
@@ -45,6 +48,8 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             options.ModelBinderProviders.Add(new ServicesModelBinderProvider());
             options.ModelBinderProviders.Add(new BodyModelBinderProvider(options.InputFormatters, _readerFactory, _loggerFactory, options));
             options.ModelBinderProviders.Add(new HeaderModelBinderProvider());
+            options.ModelBinderProviders.Add(new FloatingPointTypeModelBinderProvider());
+            options.ModelBinderProviders.Add(new EnumTypeModelBinderProvider(options));
             options.ModelBinderProviders.Add(new SimpleTypeModelBinderProvider());
             options.ModelBinderProviders.Add(new CancellationTokenModelBinderProvider());
             options.ModelBinderProviders.Add(new ByteArrayModelBinderProvider());

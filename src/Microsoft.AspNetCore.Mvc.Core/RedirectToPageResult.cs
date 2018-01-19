@@ -2,10 +2,17 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Core;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Net.Http.Headers;
 
 namespace Microsoft.AspNetCore.Mvc
 {
@@ -84,7 +91,7 @@ namespace Microsoft.AspNetCore.Mvc
         /// <param name="pageHandler">The page handler to redirect to.</param>
         /// <param name="routeValues">The parameters for the page.</param>
         /// <param name="permanent">If set to true, makes the redirect permanent (301). Otherwise a temporary redirect is used (302).</param>
-        /// <param name="preserveMethod">If set to true, make the temporary redirect (307) or permanent redirect (308) preserve the intial request method.</param>
+        /// <param name="preserveMethod">If set to true, make the temporary redirect (307) or permanent redirect (308) preserve the initial request method.</param>
         public RedirectToPageResult(
             string pageName,
             string pageHandler,
@@ -140,7 +147,7 @@ namespace Microsoft.AspNetCore.Mvc
         /// <param name="pageHandler">The page handler to redirect to.</param>
         /// <param name="routeValues">The parameters for the page.</param>
         /// <param name="permanent">If set to true, makes the redirect permanent (301). Otherwise a temporary redirect is used (302).</param>
-        /// <param name="preserveMethod">If set to true, make the temporary redirect (307) or permanent redirect (308) preserve the intial request method.</param>
+        /// <param name="preserveMethod">If set to true, make the temporary redirect (307) or permanent redirect (308) preserve the initial request method.</param>
         /// <param name="fragment">The fragment to add to the URL.</param>
         public RedirectToPageResult(
             string pageName,
@@ -169,7 +176,7 @@ namespace Microsoft.AspNetCore.Mvc
         public string PageName { get; set; }
 
         /// <summary>
-        /// Gets or sets the the page handler to redirect to.
+        /// Gets or sets the page handler to redirect to.
         /// </summary>
         public string PageHandler { get; set; }
 
@@ -204,6 +211,19 @@ namespace Microsoft.AspNetCore.Mvc
         public string Host { get; set; }
 
         /// <inheritdoc />
+        public override Task ExecuteResultAsync(ActionContext context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            var executor = context.HttpContext.RequestServices.GetRequiredService<IActionResultExecutor<RedirectToPageResult>>();
+            return executor.ExecuteAsync(context, this);
+        }
+
+#pragma warning disable CS0809
+        [Obsolete("This implementation will be removed in a future release, use ExecuteResultAsync.")]
         public override void ExecuteResult(ActionContext context)
         {
             if (context == null)
@@ -211,8 +231,37 @@ namespace Microsoft.AspNetCore.Mvc
                 throw new ArgumentNullException(nameof(context));
             }
 
-            var executor = context.HttpContext.RequestServices.GetRequiredService<RedirectToPageResultExecutor>();
-            executor.Execute(context, this);
+            var services = context.HttpContext.RequestServices;
+            var urlHelperFactory = services.GetRequiredService<IUrlHelperFactory>();
+            var logger = services.GetRequiredService<ILogger<RedirectToPageResult>>();
+
+            var urlHelper = UrlHelper ?? urlHelperFactory.GetUrlHelper(context);
+            var destinationUrl = urlHelper.Page(
+                PageName,
+                PageHandler,
+                RouteValues,
+                Protocol,
+                Host,
+                fragment: Fragment);
+
+            if (string.IsNullOrEmpty(destinationUrl))
+            {
+                throw new InvalidOperationException(Resources.FormatNoRoutesMatchedForPage(PageName));
+            }
+
+            logger.RedirectToPageResultExecuting(PageName);
+
+            if (PreserveMethod)
+            {
+                context.HttpContext.Response.StatusCode = Permanent ?
+                    StatusCodes.Status308PermanentRedirect : StatusCodes.Status307TemporaryRedirect;
+                context.HttpContext.Response.Headers[HeaderNames.Location] = destinationUrl;
+            }
+            else
+            {
+                context.HttpContext.Response.Redirect(destinationUrl, Permanent);
+            }
         }
+#pragma warning restore CS0809
     }
 }

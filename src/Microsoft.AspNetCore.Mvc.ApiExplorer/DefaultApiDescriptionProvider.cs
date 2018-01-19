@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -49,10 +48,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
         }
 
         /// <inheritdoc />
-        public int Order
-        {
-            get { return -1000; }
-        }
+        public int Order => -1000;
 
         /// <inheritdoc />
         public void OnProvidersExecuting(ApiDescriptionProviderContext context)
@@ -118,7 +114,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
             var runtimeReturnType = GetRuntimeReturnType(declaredReturnType);
 
-            var apiResponseTypes = GetApiResponseTypes(action, responseMetadataAttributes, runtimeReturnType);
+            var apiResponseTypes = GetApiResponseTypes(responseMetadataAttributes, runtimeReturnType);
             foreach (var apiResponseType in apiResponseTypes)
             {
                 apiDescription.SupportedResponseTypes.Add(apiResponseType);
@@ -126,12 +122,32 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
             // It would be possible here to configure an action with multiple body parameters, in which case you
             // could end up with duplicate data.
-            foreach (var parameter in apiDescription.ParameterDescriptions.Where(p => p.Source == BindingSource.Body))
+            if (apiDescription.ParameterDescriptions.Count > 0)
             {
-                var requestFormats = GetRequestFormats(action, requestMetadataAttributes, parameter.Type);
-                foreach (var format in requestFormats)
+                var contentTypes = GetDeclaredContentTypes(requestMetadataAttributes);
+                foreach (var parameter in apiDescription.ParameterDescriptions)
                 {
-                    apiDescription.SupportedRequestFormats.Add(format);
+                    if (parameter.Source == BindingSource.Body)
+                    {
+                        // For request body bound parameters, determine the content types supported
+                        // by input formatters.
+                        var requestFormats = GetSupportedFormats(contentTypes, parameter.Type);
+                        foreach (var format in requestFormats)
+                        {
+                            apiDescription.SupportedRequestFormats.Add(format);
+                        }
+                    }
+                    else if (parameter.Source == BindingSource.FormFile)
+                    {
+                        // Add all declared media types since FormFiles do not get processed by formatters.
+                        foreach (var contentType in contentTypes)
+                        {
+                            apiDescription.SupportedRequestFormats.Add(new ApiRequestFormat
+                            {
+                                MediaType = contentType,
+                            });
+                        }
+                    }
                 }
             }
 
@@ -197,8 +213,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
                     parameter.Source == BindingSource.ModelBinding ||
                     parameter.Source == BindingSource.Custom)
                 {
-                    ApiParameterRouteInfo routeInfo;
-                    if (routeParameters.TryGetValue(parameter.Name, out routeInfo))
+                    if (routeParameters.TryGetValue(parameter.Name, out var routeInfo))
                     {
                         parameter.RouteInfo = routeInfo;
                         routeParameters.Remove(parameter.Name);
@@ -262,8 +277,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
         private RouteTemplate ParseTemplate(ControllerActionDescriptor action)
         {
-            if (action.AttributeRouteInfo != null &&
-                action.AttributeRouteInfo.Template != null)
+            if (action.AttributeRouteInfo?.Template != null)
             {
                 return TemplateParser.Parse(action.AttributeRouteInfo.Template);
             }
@@ -301,35 +315,22 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
             return string.Join("/", segments);
         }
 
-        private IReadOnlyList<ApiRequestFormat> GetRequestFormats(
-            ControllerActionDescriptor action,
-            IApiRequestMetadataProvider[] requestMetadataAttributes,
-            Type type)
+        private IReadOnlyList<ApiRequestFormat> GetSupportedFormats(MediaTypeCollection contentTypes, Type type)
         {
-            var results = new List<ApiRequestFormat>();
-
-            // Walk through all 'filter' attributes in order, and allow each one to see or override
-            // the results of the previous ones. This is similar to the execution path for content-negotiation.
-            var contentTypes = new MediaTypeCollection();
-            if (requestMetadataAttributes != null)
-            {
-                foreach (var metadataAttribute in requestMetadataAttributes)
-                {
-                    metadataAttribute.SetContentTypes(contentTypes);
-                }
-            }
-
             if (contentTypes.Count == 0)
             {
-                contentTypes.Add((string)null);
+                contentTypes = new MediaTypeCollection
+                {
+                    (string)null,
+                };
             }
 
+            var results = new List<ApiRequestFormat>();
             foreach (var contentType in contentTypes)
             {
                 foreach (var formatter in _inputFormatters)
                 {
-                    var requestFormatMetadataProvider = formatter as IApiRequestFormatMetadataProvider;
-                    if (requestFormatMetadataProvider != null)
+                    if (formatter is IApiRequestFormatMetadataProvider requestFormatMetadataProvider)
                     {
                         var supportedTypes = requestFormatMetadataProvider.GetSupportedContentTypes(contentType, type);
 
@@ -351,8 +352,23 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
             return results;
         }
 
+        private static MediaTypeCollection GetDeclaredContentTypes(IApiRequestMetadataProvider[] requestMetadataAttributes)
+        {
+            // Walk through all 'filter' attributes in order, and allow each one to see or override
+            // the results of the previous ones. This is similar to the execution path for content-negotiation.
+            var contentTypes = new MediaTypeCollection();
+            if (requestMetadataAttributes != null)
+            {
+                foreach (var metadataAttribute in requestMetadataAttributes)
+                {
+                    metadataAttribute.SetContentTypes(contentTypes);
+                }
+            }
+
+            return contentTypes;
+        }
+
         private IReadOnlyList<ApiResponseType> GetApiResponseTypes(
-            ControllerActionDescriptor action,
             IApiResponseMetadataProvider[] responseMetadataAttributes,
             Type type)
         {
@@ -452,7 +468,10 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
             }
 
             // Unwrap the type if it's a Task<T>. The Task (non-generic) case was already handled.
-            var unwrappedType = GetTaskInnerTypeOrNull(declaredReturnType) ?? declaredReturnType;
+            var unwrappedType = UnwrapGenericType(declaredReturnType, typeof(Task<>));
+
+            // Unwrap the type if it's ActionResult<T> or Task<ActionResult<T>>.
+            unwrappedType = UnwrapGenericType(unwrappedType, typeof(ActionResult<>));
 
             // If the method is declared to return IActionResult or a derived class, that information
             // isn't valuable to the formatter.
@@ -464,13 +483,12 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
             {
                 return unwrappedType;
             }
-        }
 
-        private static Type GetTaskInnerTypeOrNull(Type type)
-        {
-            var genericType = ClosedGenericMatcher.ExtractGenericInterface(type, typeof(Task<>));
-
-            return genericType?.GenericTypeArguments[0];
+            Type UnwrapGenericType(Type type, Type queryType)
+            {
+                var genericType = ClosedGenericMatcher.ExtractGenericInterface(type, queryType);
+                return genericType?.GenericTypeArguments[0] ?? type;
+            }
         }
 
         private Type GetRuntimeReturnType(Type declaredReturnType)
@@ -579,7 +597,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
                 Context = context;
                 Parameter = parameter;
 
-                Visited = new HashSet<PropertyKey>();
+                Visited = new HashSet<PropertyKey>(new PropertyKeyEqualityComparer());
             }
 
             public ApiParameterContext Context { get; }
@@ -617,7 +635,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
                 // For any property which is a leaf node, we don't want to keep traversing:
                 //
                 //  1)  Collections - while it's possible to have binder attributes on the inside of a collection,
-                //      it hardly seems useful, and would result in some very wierd binding.
+                //      it hardly seems useful, and would result in some very weird binding.
                 //
                 //  2)  Simple Types - These are generally part of the .net framework - primitives, or types which have a
                 //      type converter from string.
@@ -736,7 +754,11 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
                 public int GetHashCode(PropertyKey obj)
                 {
-                    return obj.ContainerType.GetHashCode() ^ obj.PropertyName.GetHashCode() ^ obj.Source.GetHashCode();
+                    var hashCodeCombiner = HashCodeCombiner.Start();
+                    hashCodeCombiner.Add(obj.ContainerType);
+                    hashCodeCombiner.Add(obj.PropertyName);
+                    hashCodeCombiner.Add(obj.Source);
+                    return hashCodeCombiner.CombinedHash;
                 }
             }
         }

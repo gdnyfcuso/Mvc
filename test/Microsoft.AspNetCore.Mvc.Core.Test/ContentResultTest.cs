@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.TestCommon;
 using Microsoft.AspNetCore.Mvc.ViewComponents;
@@ -261,7 +262,7 @@ namespace Microsoft.AspNetCore.Mvc
         private static IServiceCollection CreateServices(params ViewComponentDescriptor[] descriptors)
         {
             // An array pool could return a buffer which is greater or equal to the size of the default character
-            // chunk size. Since the tests here depend on a specifc character buffer size to test boundary conditions,
+            // chunk size. Since the tests here depend on a specific character buffer size to test boundary conditions,
             // make sure to only return a buffer of that size.
             var charArrayPool = new Mock<ArrayPool<char>>();
             charArrayPool
@@ -269,7 +270,7 @@ namespace Microsoft.AspNetCore.Mvc
                 .Returns(new char[DefaultCharacterChunkSize]);
 
             var services = new ServiceCollection();
-            services.AddSingleton(new ContentResultExecutor(
+            services.AddSingleton<IActionResultExecutor<ContentResult>>(new ContentResultExecutor(
                 new Logger<ContentResultExecutor>(NullLoggerFactory.Instance),
                 new MemoryPoolHttpResponseStreamWriterFactory(ArrayPool<byte>.Shared, charArrayPool.Object)));
             return services;

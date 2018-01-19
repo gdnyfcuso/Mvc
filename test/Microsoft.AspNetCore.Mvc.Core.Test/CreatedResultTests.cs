@@ -8,10 +8,12 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json;
 using Xunit;
@@ -89,15 +91,15 @@ namespace Microsoft.AspNetCore.Mvc
 
         private static IServiceProvider CreateServices()
         {
-            var options = new TestOptionsManager<MvcOptions>();
+            var options = Options.Create(new MvcOptions());
             options.Value.OutputFormatters.Add(new StringOutputFormatter());
             options.Value.OutputFormatters.Add(new JsonOutputFormatter(
                 new JsonSerializerSettings(),
                 ArrayPool<char>.Shared));
 
             var services = new ServiceCollection();
-            services.AddSingleton(new ObjectResultExecutor(
-                options,
+            services.AddSingleton<IActionResultExecutor<ObjectResult>>(new ObjectResultExecutor(
+                new DefaultOutputFormatterSelector(options, NullLoggerFactory.Instance),
                 new TestHttpResponseStreamWriterFactory(),
                 NullLoggerFactory.Instance));
 

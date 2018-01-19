@@ -35,9 +35,9 @@ namespace Microsoft.AspNetCore.Mvc.Formatters
             var result = await formatter.ReadAsync(context);
 
             // Assert
-            Assert.Equal(true, result.HasError);
-            Assert.Equal(true, context.ModelState.ContainsKey("something"));
-            Assert.Equal(1, context.ModelState["something"].Errors.Count);
+            Assert.True(result.HasError);
+            Assert.True(context.ModelState.ContainsKey("something"));
+            Assert.Single(context.ModelState["something"].Errors);
 
             var error = context.ModelState["something"].Errors[0];
             Assert.IsType<UnsupportedContentTypeException>(error.Exception);

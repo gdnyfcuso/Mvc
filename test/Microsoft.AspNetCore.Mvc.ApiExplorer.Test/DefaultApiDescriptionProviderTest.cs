@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ActionConstraints;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
@@ -391,6 +392,42 @@ namespace Microsoft.AspNetCore.Mvc.Description
             var description = Assert.Single(descriptions);
             var responseType = Assert.Single(description.SupportedResponseTypes);
             Assert.Equal(typeof(Product), responseType.Type);
+            Assert.NotNull(responseType.ModelMetadata);
+        }
+
+        [Theory]
+        [InlineData(nameof(ReturnsActionResultOfProduct))]
+        [InlineData(nameof(ReturnsTaskOfActionResultOfProduct))]
+        public void GetApiDescription_PopulatesResponseType_ForActionResultOfT(string methodName)
+        {
+            // Arrange
+            var action = CreateActionDescriptor(methodName);
+
+            // Act
+            var descriptions = GetApiDescriptions(action);
+
+            // Assert
+            var description = Assert.Single(descriptions);
+            var responseType = Assert.Single(description.SupportedResponseTypes);
+            Assert.Equal(typeof(Product), responseType.Type);
+            Assert.NotNull(responseType.ModelMetadata);
+        }
+
+        [Theory]
+        [InlineData(nameof(ReturnsActionResultOfSequenceOfProducts))]
+        [InlineData(nameof(ReturnsTaskOfActionResultOfSequenceOfProducts))]
+        public void GetApiDescription_PopulatesResponseType_ForActionResultOfSequenceOfT(string methodName)
+        {
+            // Arrange
+            var action = CreateActionDescriptor(methodName);
+
+            // Act
+            var descriptions = GetApiDescriptions(action);
+
+            // Assert
+            var description = Assert.Single(descriptions);
+            var responseType = Assert.Single(description.SupportedResponseTypes);
+            Assert.Equal(typeof(IEnumerable<Product>), responseType.Type);
             Assert.NotNull(responseType.ModelMetadata);
         }
 
@@ -955,6 +992,31 @@ namespace Microsoft.AspNetCore.Mvc.Description
         }
 
         [Fact]
+        public void GetApiDescription_ParameterDescription_SourceFromFormFile()
+        {
+            // Arrange
+            var action = CreateActionDescriptor(nameof(AcceptsFormFile));
+            action.FilterDescriptors = new[]
+            {
+                new FilterDescriptor(new ConsumesAttribute("multipart/form-data"), FilterScope.Action),
+            };
+
+            // Act
+            var descriptions = GetApiDescriptions(action);
+
+            // Assert
+            var description = Assert.Single(descriptions);
+
+            var parameters = description.ParameterDescriptions;
+            var parameter = Assert.Single(parameters);
+            Assert.Same(BindingSource.FormFile, parameter.Source);
+
+            var requestFormat = Assert.Single(description.SupportedRequestFormats);
+            Assert.Equal("multipart/form-data", requestFormat.MediaType);
+            Assert.Null(requestFormat.Formatter);
+        }
+
+        [Fact]
         public void GetApiDescription_ParameterDescription_SourceFromHeader()
         {
             // Arrange
@@ -1478,6 +1540,14 @@ namespace Microsoft.AspNetCore.Mvc.Description
             return null;
         }
 
+        private ActionResult<Product> ReturnsActionResultOfProduct() => null;
+
+        private ActionResult<IEnumerable<Product>> ReturnsActionResultOfSequenceOfProducts() => null;
+
+        private Task<ActionResult<Product>> ReturnsTaskOfActionResultOfProduct() => null;
+
+        private Task<ActionResult<IEnumerable<Product>>> ReturnsTaskOfActionResultOfSequenceOfProducts() => null;
+
         private void AcceptsProduct(Product product)
         {
         }
@@ -1487,6 +1557,10 @@ namespace Microsoft.AspNetCore.Mvc.Description
         }
 
         private void AcceptsProduct_Form([FromForm] Product product)
+        {
+        }
+
+        private void AcceptsFormFile([FromFormFile] IFormFile formFile)
         {
         }
 
@@ -1811,6 +1885,11 @@ namespace Microsoft.AspNetCore.Mvc.Description
         private interface ITestService
         {
 
+        }
+
+        private class FromFormFileAttribute : Attribute, IBindingSourceMetadata
+        {
+            public BindingSource BindingSource => BindingSource.FormFile;
         }
     }
 }

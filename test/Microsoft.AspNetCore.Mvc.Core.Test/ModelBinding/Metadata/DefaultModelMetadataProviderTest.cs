@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
@@ -109,7 +110,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
             var metadata = provider.GetMetadataForProperties(typeof(ModelTypeWithIndexer)).ToArray();
 
             // Assert
-            Assert.Equal(1, metadata.Length);
+            Assert.Single(metadata);
             Assert.Single(metadata, m => m.PropertyName == "Property1");
         }
 
@@ -197,11 +198,66 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
             }
         }
 
+        [Fact]
+        public void GetMetadataForParameter_SuppliesEmptyAttributes_WhenParameterHasNoAttributes()
+        {
+            // Arrange
+            var provider = CreateProvider();
+            var parameters = typeof(ModelType)
+                .GetMethod(nameof(ModelType.Method1))
+                .GetParameters();
+
+            // Act
+            var metadata = provider.GetMetadataForParameter(parameters[0]);
+
+            // Assert
+            var defaultMetadata = Assert.IsType<DefaultModelMetadata>(metadata);
+            Assert.Empty(defaultMetadata.Attributes.Attributes);
+        }
+
+        [Fact]
+        public void GetMetadataForParameter_SuppliesAttributes_WhenParamHasAttributes()
+        {
+            // Arrange
+            var provider = CreateProvider();
+            var parameters = typeof(ModelType)
+                .GetMethod(nameof(ModelType.Method1))
+                .GetParameters();
+
+            // Act
+            var metadata = provider.GetMetadataForParameter(parameters[1]);
+
+            // Assert
+            var defaultMetadata = Assert.IsType<DefaultModelMetadata>(metadata);
+            Assert.Equal(2, defaultMetadata.Attributes.Attributes.Count);
+            var attribute1 = Assert.IsType<ModelAttribute>(defaultMetadata.Attributes.Attributes[0]);
+            Assert.Equal("ParamAttrib1", attribute1.Value);
+            var attribute2 = Assert.IsType<ModelAttribute>(defaultMetadata.Attributes.Attributes[1]);
+            Assert.Equal("ParamAttrib2", attribute2.Value);
+        }
+
+        [Fact]
+        public void GetMetadataForParameter_Cached()
+        {
+            // Arrange
+            var provider = CreateProvider();
+            var parameter = typeof(ModelType)
+                .GetMethod(nameof(ModelType.Method1))
+                .GetParameters()[1];
+
+            // Act
+            var metadata1 = provider.GetMetadataForParameter(parameter);
+            var metadata2 = provider.GetMetadataForParameter(parameter);
+
+            // Assert
+            Assert.Same(metadata1, metadata2);
+        }
+
         private static DefaultModelMetadataProvider CreateProvider()
         {
             return new DefaultModelMetadataProvider(
                 new EmptyCompositeMetadataDetailsProvider(),
-                new TestOptionsManager<MvcOptions>());
+                Options.Create(new MvcOptions()));
         }
 
         [Model("OnType")]
@@ -211,6 +267,12 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
             public PropertyType Property1 { get; } = new PropertyType();
 
             public PropertyType Property2 { get; set; }
+
+            public void Method1(
+                object paramWithNoAttributes,
+                [Model("ParamAttrib1"), Model("ParamAttrib2")] object paramWithTwoAttributes)
+            {
+            }
         }
 
         [Model("OnPropertyType")]
@@ -218,6 +280,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
         {
         }
 
+        [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
         private class ModelAttribute : Attribute
         {
             public ModelAttribute(string value)
@@ -230,7 +293,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata
 
         private class ModelTypeWithIndexer
         {
-            public PropertyType this[string key] { get { return null; } }
+            public PropertyType this[string key] => null;
 
             public PropertyType Property1 { get; set; }
         }

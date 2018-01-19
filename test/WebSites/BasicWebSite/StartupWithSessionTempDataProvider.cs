@@ -19,7 +19,7 @@ namespace BasicWebSite
 
         public void Configure(IApplicationBuilder app)
         {
-            app.UseCultureReplacer();
+            app.UseDeveloperExceptionPage();
             app.UseSession();
             app.UseMvcWithDefaultRoute();
         }

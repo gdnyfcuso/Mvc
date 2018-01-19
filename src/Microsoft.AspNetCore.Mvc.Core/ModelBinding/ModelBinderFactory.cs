@@ -10,7 +10,10 @@ using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Mvc.Core;
 using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Internal;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding
@@ -22,20 +25,42 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
     {
         private readonly IModelMetadataProvider _metadataProvider;
         private readonly IModelBinderProvider[] _providers;
-
         private readonly ConcurrentDictionary<Key, IModelBinder> _cache;
+        private readonly IServiceProvider _serviceProvider;
+
+        /// <summary>
+        /// <para>This constructor is obsolete and will be removed in a future version. The recommended alternative
+        /// is the overload that also takes an <see cref="IServiceProvider"/>.</para>
+        /// <para>Creates a new <see cref="ModelBinderFactory"/>.</para>
+        /// </summary>
+        /// <param name="metadataProvider">The <see cref="IModelMetadataProvider"/>.</param>
+        /// <param name="options">The <see cref="IOptions{TOptions}"/> for <see cref="MvcOptions"/>.</param>
+        [Obsolete("This constructor is obsolete and will be removed in a future version. The recommended alternative"
+            + " is the overload that also takes an " + nameof(IServiceProvider) + ".")]
+        public ModelBinderFactory(IModelMetadataProvider metadataProvider, IOptions<MvcOptions> options)
+            : this(metadataProvider, options, GetDefaultServices())
+        {
+        }
 
         /// <summary>
         /// Creates a new <see cref="ModelBinderFactory"/>.
         /// </summary>
         /// <param name="metadataProvider">The <see cref="IModelMetadataProvider"/>.</param>
         /// <param name="options">The <see cref="IOptions{TOptions}"/> for <see cref="MvcOptions"/>.</param>
-        public ModelBinderFactory(IModelMetadataProvider metadataProvider, IOptions<MvcOptions> options)
+        /// <param name="serviceProvider">The <see cref="IServiceProvider"/>.</param>
+        public ModelBinderFactory(
+            IModelMetadataProvider metadataProvider,
+            IOptions<MvcOptions> options,
+            IServiceProvider serviceProvider)
         {
             _metadataProvider = metadataProvider;
             _providers = options.Value.ModelBinderProviders.ToArray();
-
+            _serviceProvider = serviceProvider;
             _cache = new ConcurrentDictionary<Key, IModelBinder>();
+
+            var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger<ModelBinderFactory>();
+            logger.RegisteredModelBinderProviders(_providers);
         }
 
         /// <inheritdoc />
@@ -106,7 +131,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
                 return NoOpBinder.Instance;
             }
 
-            // A non-null token will usually be passed in at the the top level (ParameterDescriptor likely).
+            // A non-null token will usually be passed in at the top level (ParameterDescriptor likely).
             // This prevents us from treating a parameter the same as a collection-element - which could
             // happen looking at just model metadata.
             var key = new Key(providerContext.Metadata, token);
@@ -195,6 +220,13 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
             return _cache.TryGetValue(new Key(metadata, cacheToken), out binder);
         }
 
+        private static IServiceProvider GetDefaultServices()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+            return services.BuildServiceProvider();
+        }
+
         private class DefaultModelBinderProviderContext : ModelBinderProviderContext
         {
             private readonly ModelBinderFactory _factory;
@@ -245,6 +277,8 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
 
             public Dictionary<Key, IModelBinder> Visited { get; }
 
+            public override IServiceProvider Services => _factory._serviceProvider;
+
             public override IModelBinder CreateBinder(ModelMetadata metadata)
             {
                 if (metadata == null)
@@ -253,7 +287,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding
                 }
 
                 // For non-root nodes we use the ModelMetadata as the cache token. This ensures that all non-root
-                // nodes with the same metadata will have the the same binder. This is OK because for an non-root
+                // nodes with the same metadata will have the same binder. This is OK because for an non-root
                 // node there's no opportunity to customize binding info like there is for a parameter.
                 var token = metadata;
 

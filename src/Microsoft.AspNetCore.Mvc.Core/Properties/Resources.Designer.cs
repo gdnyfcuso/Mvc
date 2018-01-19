@@ -907,6 +907,20 @@ namespace Microsoft.AspNetCore.Mvc.Core
             => string.Format(CultureInfo.CurrentCulture, GetString("ModelState_AttemptedValueIsInvalid"), p0, p1);
 
         /// <summary>
+        /// The value '{0}' is not valid.
+        /// </summary>
+        internal static string ModelState_NonPropertyAttemptedValueIsInvalid
+        {
+            get => GetString("ModelState_NonPropertyAttemptedValueIsInvalid");
+        }
+
+        /// <summary>
+        /// The value '{0}' is not valid.
+        /// </summary>
+        internal static string FormatModelState_NonPropertyAttemptedValueIsInvalid(object p0)
+            => string.Format(CultureInfo.CurrentCulture, GetString("ModelState_NonPropertyAttemptedValueIsInvalid"), p0);
+
+        /// <summary>
         /// The supplied value is invalid for {0}.
         /// </summary>
         internal static string ModelState_UnknownValueIsInvalid
@@ -919,6 +933,20 @@ namespace Microsoft.AspNetCore.Mvc.Core
         /// </summary>
         internal static string FormatModelState_UnknownValueIsInvalid(object p0)
             => string.Format(CultureInfo.CurrentCulture, GetString("ModelState_UnknownValueIsInvalid"), p0);
+
+        /// <summary>
+        /// The supplied value is invalid.
+        /// </summary>
+        internal static string ModelState_NonPropertyUnknownValueIsInvalid
+        {
+            get => GetString("ModelState_NonPropertyUnknownValueIsInvalid");
+        }
+
+        /// <summary>
+        /// The supplied value is invalid.
+        /// </summary>
+        internal static string FormatModelState_NonPropertyUnknownValueIsInvalid()
+            => GetString("ModelState_NonPropertyUnknownValueIsInvalid");
 
         /// <summary>
         /// The value '{0}' is invalid.
@@ -947,6 +975,20 @@ namespace Microsoft.AspNetCore.Mvc.Core
         /// </summary>
         internal static string FormatHtmlGeneration_ValueMustBeNumber(object p0)
             => string.Format(CultureInfo.CurrentCulture, GetString("HtmlGeneration_ValueMustBeNumber"), p0);
+
+        /// <summary>
+        /// The field must be a number.
+        /// </summary>
+        internal static string HtmlGeneration_NonPropertyValueMustBeNumber
+        {
+            get => GetString("HtmlGeneration_NonPropertyValueMustBeNumber");
+        }
+
+        /// <summary>
+        /// The field must be a number.
+        /// </summary>
+        internal static string FormatHtmlGeneration_NonPropertyValueMustBeNumber()
+            => GetString("HtmlGeneration_NonPropertyValueMustBeNumber");
 
         /// <summary>
         /// The list of '{0}' must not be empty. Add at least one supported encoding.
@@ -1003,20 +1045,6 @@ namespace Microsoft.AspNetCore.Mvc.Core
         /// </summary>
         internal static string FormatFormatter_NoMediaTypes(object p0, object p1)
             => string.Format(CultureInfo.CurrentCulture, GetString("Formatter_NoMediaTypes"), p0, p1);
-
-        /// <summary>
-        /// At least one authentication scheme must be specified.
-        /// </summary>
-        internal static string MustSpecifyAtLeastOneAuthenticationScheme
-        {
-            get => GetString("MustSpecifyAtLeastOneAuthenticationScheme");
-        }
-
-        /// <summary>
-        /// At least one authentication scheme must be specified.
-        /// </summary>
-        internal static string FormatMustSpecifyAtLeastOneAuthenticationScheme()
-            => GetString("MustSpecifyAtLeastOneAuthenticationScheme");
 
         /// <summary>
         /// Could not create a model binder for model object of type '{0}'.
@@ -1285,7 +1313,7 @@ namespace Microsoft.AspNetCore.Mvc.Core
             => string.Format(CultureInfo.CurrentCulture, GetString("NoRoutesMatchedForPage"), p0);
 
         /// <summary>
-        /// The relative page path '{0}' can only can only be used while executing a Razor Page. Specify a root relative path with a leading '/' to generate a URL outside of a Razor Page.
+        /// The relative page path '{0}' can only be used while executing a Razor Page. Specify a root relative path with a leading '/' to generate a URL outside of a Razor Page.
         /// </summary>
         internal static string UrlHelper_RelativePagePathIsNotSupported
         {
@@ -1293,10 +1321,52 @@ namespace Microsoft.AspNetCore.Mvc.Core
         }
 
         /// <summary>
-        /// The relative page path '{0}' can only can only be used while executing a Razor Page. Specify a root relative path with a leading '/' to generate a URL outside of a Razor Page.
+        /// The relative page path '{0}' can only be used while executing a Razor Page. Specify a root relative path with a leading '/' to generate a URL outside of a Razor Page.
         /// </summary>
         internal static string FormatUrlHelper_RelativePagePathIsNotSupported(object p0)
             => string.Format(CultureInfo.CurrentCulture, GetString("UrlHelper_RelativePagePathIsNotSupported"), p0);
+
+        /// <summary>
+        /// One or more validation errors occured.
+        /// </summary>
+        internal static string ValidationProblemDescription_Title
+        {
+            get => GetString("ValidationProblemDescription_Title");
+        }
+
+        /// <summary>
+        /// One or more validation errors occured.
+        /// </summary>
+        internal static string FormatValidationProblemDescription_Title()
+            => GetString("ValidationProblemDescription_Title");
+
+        /// <summary>
+        /// Action methods on controllers annotated with {0} must have an attribute route.
+        /// </summary>
+        internal static string ApiController_AttributeRouteRequired
+        {
+            get => GetString("ApiController_AttributeRouteRequired");
+        }
+
+        /// <summary>
+        /// Action methods on controllers annotated with {0} must have an attribute route.
+        /// </summary>
+        internal static string FormatApiController_AttributeRouteRequired(object p0)
+            => string.Format(CultureInfo.CurrentCulture, GetString("ApiController_AttributeRouteRequired"), p0);
+
+        /// <summary>
+        /// No file provider has been configured to process the supplied file.
+        /// </summary>
+        internal static string VirtualFileResultExecutor_NoFileProviderConfigured
+        {
+            get => GetString("VirtualFileResultExecutor_NoFileProviderConfigured");
+        }
+
+        /// <summary>
+        /// No file provider has been configured to process the supplied file.
+        /// </summary>
+        internal static string FormatVirtualFileResultExecutor_NoFileProviderConfigured()
+            => GetString("VirtualFileResultExecutor_NoFileProviderConfigured");
 
         private static string GetString(string name, params string[] formatterNames)
         {
