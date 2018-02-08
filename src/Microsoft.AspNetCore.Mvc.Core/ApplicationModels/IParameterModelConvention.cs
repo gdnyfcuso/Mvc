@@ -4,7 +4,7 @@
 namespace Microsoft.AspNetCore.Mvc.ApplicationModels
 {
     /// <summary>
-    /// Allows customization of the <see cref="ControllerModel"/>.
+    /// Allows customization of the <see cref="ParameterModel"/>.
     /// </summary>
     /// <remarks>
     /// To use this interface, create an <see cref="System.Attribute"/> class which implements the interface and
@@ -15,10 +15,6 @@ namespace Microsoft.AspNetCore.Mvc.ApplicationModels
     /// </remarks>
     public interface IParameterModelConvention
     {
-        /// <summary>
-        /// Called to apply the convention to the <see cref="ParameterModel"/>.
-        /// </summary>
-        /// <param name="parameter">The <see cref="ParameterModel"/>.</param>
         void Apply(ParameterModel parameter);
     }
 }

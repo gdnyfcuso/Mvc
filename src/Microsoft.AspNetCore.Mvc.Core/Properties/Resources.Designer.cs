@@ -1327,7 +1327,7 @@ namespace Microsoft.AspNetCore.Mvc.Core
             => string.Format(CultureInfo.CurrentCulture, GetString("UrlHelper_RelativePagePathIsNotSupported"), p0);
 
         /// <summary>
-        /// One or more validation errors occured.
+        /// One or more validation errors occurred.
         /// </summary>
         internal static string ValidationProblemDescription_Title
         {
@@ -1335,13 +1335,13 @@ namespace Microsoft.AspNetCore.Mvc.Core
         }
 
         /// <summary>
-        /// One or more validation errors occured.
+        /// One or more validation errors occurred.
         /// </summary>
         internal static string FormatValidationProblemDescription_Title()
             => GetString("ValidationProblemDescription_Title");
 
         /// <summary>
-        /// Action methods on controllers annotated with {0} must have an attribute route.
+        /// Action '{0}' does not have an attribute route. Action methods on controllers annotated with {1} must be attribute routed.
         /// </summary>
         internal static string ApiController_AttributeRouteRequired
         {
@@ -1349,10 +1349,10 @@ namespace Microsoft.AspNetCore.Mvc.Core
         }
 
         /// <summary>
-        /// Action methods on controllers annotated with {0} must have an attribute route.
+        /// Action '{0}' does not have an attribute route. Action methods on controllers annotated with {1} must be attribute routed.
         /// </summary>
-        internal static string FormatApiController_AttributeRouteRequired(object p0)
-            => string.Format(CultureInfo.CurrentCulture, GetString("ApiController_AttributeRouteRequired"), p0);
+        internal static string FormatApiController_AttributeRouteRequired(object p0, object p1)
+            => string.Format(CultureInfo.CurrentCulture, GetString("ApiController_AttributeRouteRequired"), p0, p1);
 
         /// <summary>
         /// No file provider has been configured to process the supplied file.
