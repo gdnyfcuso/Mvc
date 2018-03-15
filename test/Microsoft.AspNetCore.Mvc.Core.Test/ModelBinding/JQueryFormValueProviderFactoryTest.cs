@@ -116,6 +116,22 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Test
             Assert.Equal("found", (string)result);
         }
 
+        [Fact]
+        public async Task CreatesValueProvider_WithCurrentCulture()
+        {
+            // Arrange
+            var context = CreateContext("application/x-www-form-urlencoded", formValues: _backingStore);
+            var factory = new JQueryFormValueProviderFactory();
+
+            // Act
+            await factory.CreateValueProviderAsync(context);
+
+            // Assert
+            var valueProvider = Assert.Single(context.ValueProviders);
+            var jqueryFormValueProvider = Assert.IsType<JQueryFormValueProvider>(valueProvider);
+            Assert.Equal(CultureInfo.CurrentCulture, jqueryFormValueProvider.Culture);
+        }
+
         private static ValueProviderFactoryContext CreateContext(string contentType, Dictionary<string, StringValues> formValues)
         {
             var context = new DefaultHttpContext();

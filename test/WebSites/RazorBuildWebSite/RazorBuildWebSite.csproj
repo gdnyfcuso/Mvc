@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFrameworks>$(StandardTestWebsiteTfms)</TargetFrameworks>
     <DefineConstants>$(DefineConstants)</DefineConstants>
+    <!-- We have tests that test runtime view compilation. -->
+    <RazorCompileOnBuild>false</RazorCompileOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +24,7 @@
       Just do `dotnet build /t:RazorGenerate /p:TargetFramework=netcoreapp2.0` and look in obj/Debug/netcoreapp2.0/Razor
       -->
     <PackageReference Include="Microsoft.AspNetCore.Razor.Design" Version="$(MicrosoftAspNetCoreRazorDesignPackageVersion)" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.Extensions" Version="$(MicrosoftAspNetCoreMvcRazorExtensionsPackageVersion)" />
   </ItemGroup>
 
 </Project>

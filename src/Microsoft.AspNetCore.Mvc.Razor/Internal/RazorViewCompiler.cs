@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.Razor.Compilation;
 using Microsoft.AspNetCore.Razor.Hosting;
 using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.FileProviders;
@@ -31,7 +32,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
         private readonly Dictionary<string, CompiledViewDescriptor> _precompiledViews;
         private readonly ConcurrentDictionary<string, string> _normalizedPathCache;
         private readonly IFileProvider _fileProvider;
-        private readonly RazorTemplateEngine _templateEngine;
+        private readonly RazorProjectEngine _projectEngine;
         private readonly Action<RoslynCompilationContext> _compilationCallback;
         private readonly ILogger _logger;
         private readonly CSharpCompiler _csharpCompiler;
@@ -39,7 +40,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
 
         public RazorViewCompiler(
             IFileProvider fileProvider,
-            RazorTemplateEngine templateEngine,
+            RazorProjectEngine projectEngine,
             CSharpCompiler csharpCompiler,
             Action<RoslynCompilationContext> compilationCallback,
             IList<CompiledViewDescriptor> precompiledViews,
@@ -50,9 +51,9 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 throw new ArgumentNullException(nameof(fileProvider));
             }
 
-            if (templateEngine == null)
+            if (projectEngine == null)
             {
-                throw new ArgumentNullException(nameof(templateEngine));
+                throw new ArgumentNullException(nameof(projectEngine));
             }
 
             if (csharpCompiler == null)
@@ -76,7 +77,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
             }
 
             _fileProvider = fileProvider;
-            _templateEngine = templateEngine;
+            _projectEngine = projectEngine;
             _csharpCompiler = csharpCompiler;
             _compilationCallback = compilationCallback;
             _logger = logger;
@@ -97,6 +98,8 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
 
             foreach (var precompiledView in precompiledViews)
             {
+                logger.ViewCompilerLocatedCompiledView(precompiledView.RelativePath);
+
                 if (_precompiledViews.TryGetValue(precompiledView.RelativePath, out var otherValue))
                 {
                     var message = string.Join(
@@ -108,6 +111,11 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 }
 
                 _precompiledViews.Add(precompiledView.RelativePath, precompiledView);
+            }
+
+            if (_precompiledViews.Count == 0)
+            {
+                logger.ViewCompilerNoCompiledViewsFound();
             }
         }
 
@@ -121,13 +129,12 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
 
             // Attempt to lookup the cache entry using the passed in path. This will succeed if the path is already
             // normalized and a cache entry exists.
-            Task<CompiledViewDescriptor> cachedResult;
-            if (_cache.TryGetValue(relativePath, out cachedResult))
+            if (_cache.TryGetValue(relativePath, out Task<CompiledViewDescriptor> cachedResult))
             {
                 return cachedResult;
             }
 
-            var normalizedPath =  GetNormalizedPath(relativePath);
+            var normalizedPath = GetNormalizedPath(relativePath);
             if (_cache.TryGetValue(normalizedPath, out cachedResult))
             {
                 return cachedResult;
@@ -157,6 +164,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
 
                 if (_precompiledViews.TryGetValue(normalizedPath, out var precompiledView))
                 {
+                    _logger.ViewCompilerLocatedCompiledViewForPath(normalizedPath);
                     item = CreatePrecompiledWorkItem(normalizedPath, precompiledView);
                 }
                 else
@@ -195,7 +203,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 Debug.Assert(taskSource != null);
 
                 if (item.Descriptor?.Item != null &&
-                    ChecksumValidator.IsItemValid(_templateEngine.Project, item.Descriptor.Item))
+                    ChecksumValidator.IsItemValid(_projectEngine.FileSystem, item.Descriptor.Item))
                 {
                     // If the item has checksums to validate, we should also have a precompiled view.
                     Debug.Assert(item.Descriptor != null);
@@ -204,6 +212,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                     return taskSource.Task;
                 }
 
+                _logger.ViewCompilerInvalidingCompiledFile(item.NormalizedPath);
                 try
                 {
                     var descriptor = CompileAndEmit(normalizedPath);
@@ -281,9 +290,11 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 _fileProvider.Watch(normalizedPath),
             };
 
-            var projectItem = _templateEngine.Project.GetItem(normalizedPath);
+            var projectItem = _projectEngine.FileSystem.GetItem(normalizedPath);
             if (!projectItem.Exists)
             {
+                _logger.ViewCompilerCouldNotFindFileAtPath(normalizedPath);
+
                 // If the file doesn't exist, we can't do compilation right now - we still want to cache
                 // the fact that we tried. This will allow us to retrigger compilation if the view file
                 // is added.
@@ -303,11 +314,24 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 };
             }
 
+            _logger.ViewCompilerFoundFileToCompile(normalizedPath);
+
             // OK this means we can do compilation. For now let's just identify the other files we need to watch
             // so we can create the cache entry. Compilation will happen after we release the lock.
-            foreach (var importItem in _templateEngine.GetImportItems(projectItem))
+
+            var importFeature = _projectEngine.ProjectFeatures.OfType<IImportProjectFeature>().FirstOrDefault();
+
+            // There should always be an import feature unless someone has misconfigured their RazorProjectEngine.
+            // In that case once we attempt to parse the Razor file we'll explode and give the a user a decent
+            // error message; for now, lets just be extra protective and assume 0 imports to not give a bad error.
+            var imports = importFeature?.GetImports(projectItem) ?? Enumerable.Empty<RazorProjectItem>();
+            var physicalImports = imports.Where(import => import.FilePath != null);
+
+            // Now that we have non-dynamic imports we need to get their RazorProjectItem equivalents so we have their
+            // physical file paths (according to the FileSystem).
+            foreach (var physicalImport in physicalImports)
             {
-                expirationTokens.Add(_fileProvider.Watch(importItem.FilePath));
+                expirationTokens.Add(_fileProvider.Watch(physicalImport.FilePath));
             }
 
             return new ViewCompilerWorkItem()
@@ -321,8 +345,9 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
 
         protected virtual CompiledViewDescriptor CompileAndEmit(string relativePath)
         {
-            var codeDocument = _templateEngine.CreateCodeDocument(relativePath);
-            var cSharpDocument = _templateEngine.GenerateCode(codeDocument);
+            var projectItem = _projectEngine.FileSystem.GetItem(relativePath);
+            var codeDocument = _projectEngine.Process(projectItem);
+            var cSharpDocument = codeDocument.GetCSharpDocument();
 
             if (cSharpDocument.Diagnostics.Count > 0)
             {
@@ -350,13 +375,16 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
             var assemblyName = Path.GetRandomFileName();
             var compilation = CreateCompilation(generatedCode, assemblyName);
 
+            var emitOptions = _csharpCompiler.EmitOptions;
+            var emitPdbFile = _csharpCompiler.EmitPdb && emitOptions.DebugInformationFormat != DebugInformationFormat.Embedded;
+
             using (var assemblyStream = new MemoryStream())
-            using (var pdbStream = new MemoryStream())
+            using (var pdbStream = emitPdbFile ? new MemoryStream() : null)
             {
                 var result = compilation.Emit(
                     assemblyStream,
                     pdbStream,
-                    options: _csharpCompiler.EmitOptions);
+                    options: emitOptions);
 
                 if (!result.Success)
                 {
@@ -368,9 +396,9 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 }
 
                 assemblyStream.Seek(0, SeekOrigin.Begin);
-                pdbStream.Seek(0, SeekOrigin.Begin);
+                pdbStream?.Seek(0, SeekOrigin.Begin);
 
-                var assembly = Assembly.Load(assemblyStream.ToArray(), pdbStream.ToArray());
+                var assembly = Assembly.Load(assemblyStream.ToArray(), pdbStream?.ToArray());
                 _logger.GeneratedCodeToAssemblyCompilationEnd(codeDocument.Source.FilePath, startTimestamp);
 
                 return assembly;

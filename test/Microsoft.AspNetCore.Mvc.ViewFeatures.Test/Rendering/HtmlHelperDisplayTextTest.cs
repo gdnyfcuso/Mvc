@@ -1,6 +1,7 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Xunit;
 
@@ -296,6 +297,54 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
             Assert.Equal("Property value", result);
         }
 
+        [Fact]
+        public void DisplayTextFor_EnumDisplayAttribute_WhenPresent()
+        {
+            // Arrange
+            var model = EnumWithDisplayAttribute.Value1;
+            var helper = DefaultTemplatesUtilities.GetHtmlHelper(model);
+
+            // Act
+            var result = helper.DisplayText(expression: string.Empty);
+            var forResult = helper.DisplayTextFor(m => m);
+
+            // Assert
+            Assert.Equal("Value One", result);
+            Assert.Equal("Value One", forResult);
+        }
+
+        [Fact]
+        public void DisplayTextFor_EnumDisplayAttribute_WhenPresentOnProperty()
+        {
+            // Arrange
+            var model = new EnumWithDisplayAttributeContainer { EnumValue = EnumWithDisplayAttribute.Value1 };
+            var helper = DefaultTemplatesUtilities.GetHtmlHelper(model);
+
+            // Act
+            var result = helper.DisplayText(expression: nameof(EnumWithDisplayAttributeContainer.EnumValue));
+            var forResult = helper.DisplayTextFor(m => m.EnumValue);
+
+            // Assert
+            Assert.Equal("Value One", result);
+            Assert.Equal("Value One", forResult);
+        }
+
+        [Fact]
+        public void DisplayTextFor_EnumDisplayAttribute_WhenNotPresent()
+        {
+            // Arrange
+            var model = EnumWithoutDisplayAttribute.Value1;
+            var helper = DefaultTemplatesUtilities.GetHtmlHelper(model);
+
+            // Act
+            var result = helper.DisplayText(expression: null);
+            var forResult = helper.DisplayTextFor(m => m);
+
+            // Assert
+            Assert.Equal("Value1", result);
+            Assert.Equal("Value1", forResult);
+        }
+
         // ModelMetadata.SimpleDisplayText returns ToString() result if that method has been overridden.
         private sealed class OverriddenToStringModel
         {
@@ -314,6 +363,22 @@ namespace Microsoft.AspNetCore.Mvc.Rendering
             {
                 return _simpleDisplayText;
             }
+        }
+
+        private enum EnumWithDisplayAttribute
+        {
+            [Display(Name = "Value One")]
+            Value1
+        }
+
+        private enum EnumWithoutDisplayAttribute
+        {
+            Value1
+        }
+
+        private class EnumWithDisplayAttributeContainer
+        {
+            public EnumWithDisplayAttribute EnumValue { get; set; }
         }
     }
 }
